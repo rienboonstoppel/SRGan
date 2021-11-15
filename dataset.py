@@ -6,6 +6,7 @@ from torch.utils.data import Dataset
 from glob import glob
 import random
 import torch
+import torch.nn.functional as F
 
 
 
@@ -90,12 +91,12 @@ def slice_middle(img, numslices):
 
 
 class ImagePairDataset(Dataset):
-    def __init__(self, dataset, root_dir='data', transform=None):
+    def __init__(self, dataset, split, root_dir='data', transform=None):
         self._root_dir = root_dir
         self.transform = transform
 
         self._imgs = data_split(dataset,
-                                split = [.7,.15,.15],
+                                split=split,
                                 root_dir=root_dir,
                                 )
         self._idcs = np.arange(len(self._imgs))
@@ -138,3 +139,15 @@ class ToTensor(object):
                'id': sample['id']}
         return ret
 
+
+class Normalize(object):
+    def __init__(self, mean, std, inplace=False):
+        super().__init__()
+        self.mean = mean
+        self.std = std
+        self.inplace = inplace
+
+    def __call__(self, sample):
+        return {'LR': F.normalize(sample['LR'], self.mean, self.std, self.inplace),
+                'HR': F.normalize(sample['HR'], self.mean, self.std, self.inplace),
+                'id': sample['id']}
