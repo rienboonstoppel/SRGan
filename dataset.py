@@ -42,7 +42,7 @@ class ImagePair(object):
         return img_info
 
 
-def data_split(dataset, split=[.7,.15,.15], numslices = 50, root_dir='data',
+def data_split(dataset, patients_frac=1, train_frac=0.7, val_frac=.15, test_frac=.15, numslices=50, root_dir='data',
                randomseed = 7886462529168327085):
     random.seed(randomseed)
     path   = root_dir + "/brain_simulated_t1w_mri/HR/"
@@ -50,17 +50,19 @@ def data_split(dataset, split=[.7,.15,.15], numslices = 50, root_dir='data',
     ids    = sorted(list(map(int, [(fnames[i][-60:-54]) for i in range(len(fnames))])))
     random.shuffle(ids)
 
-    split1 = int(np.floor(split[0]*len(ids)))
-    split2 = split1+int(np.floor(split[1]*len(ids)))
-    split3 = split2+int(np.floor(split[2]*len(ids)))
+    split1 = int(np.floor(patients_frac*train_frac*len(ids)))
+    split2 = split1+int(np.floor(patients_frac*val_frac*len(ids)))
+    split3 = split2+int(np.floor(patients_frac*test_frac*len(ids)))
 
     if dataset == 'training':
         ids_split = ids[:split1]
     elif dataset == 'validation':
         ids_split = ids[split1:split2]
+    elif dataset == 'test':
+        ids_split = ids[split2:]
 
     samples = list()
-    for num in tqdm(ids_split, desc='Load {} set\t'.format(dataset)):
+    for num in tqdm(ids_split, desc='Load {} set\t'.format(dataset), bar_format='{l_bar}{bar:15}{r_bar}{bar:-15b}'):
         data = ImagePair(num, root_dir=root_dir)
         img_pair = data.img()
         LR, start_idx = slice_middle(img_pair['LR'], numslices=numslices)
@@ -91,12 +93,12 @@ def slice_middle(img, numslices):
 
 
 class ImagePairDataset(Dataset):
-    def __init__(self, dataset, split, root_dir='data', transform=None):
+    def __init__(self, dataset, patients_frac=1, train_frac=0.7, val_frac=.15, test_frac=.15, numslices=50, root_dir='data', transform=None):
         self._root_dir = root_dir
         self.transform = transform
 
         self._imgs = data_split(dataset,
-                                split=split,
+                                patients_frac=patients_frac, train_frac=train_frac, val_frac=val_frac, test_frac=test_frac, numslices=numslices,
                                 root_dir=root_dir,
                                 )
         self._idcs = np.arange(len(self._imgs))
@@ -125,7 +127,7 @@ class ToTensor(object):
     def __init__(self):
         self.fixed_conversion = torch.from_numpy
 
-    def __call__(self, sample):
+    def __call__(self, sample: dict) -> dict:
         LR = sample['LR']
         HR = sample['HR']
         try:
@@ -140,14 +142,14 @@ class ToTensor(object):
         return ret
 
 
-class Normalize(object):
-    def __init__(self, mean, std, inplace=False):
+class Normalize(torch.nn.Module):
+    def __init__(self, mean=0, std=1, inplace=False):
         super().__init__()
         self.mean = mean
         self.std = std
         self.inplace = inplace
 
     def __call__(self, sample):
-        return {'LR': F.normalize(sample['LR'], self.mean, self.std, self.inplace),
-                'HR': F.normalize(sample['HR'], self.mean, self.std, self.inplace),
+        return {'LR': (sample['LR']-self.mean)/self.std,
+                'HR': (sample['HR']-self.mean)/self.std,
                 'id': sample['id']}
