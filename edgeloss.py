@@ -43,13 +43,14 @@ def edge_loss1(out, target):
 
     return eloss
 
+
 # edge loss function 2 (mean of sobel * abs pixel difference in patch)
 def edge_loss2(out, target):
 
     x_filter = np.array([[1, 0, -1], [2, 0, -2], [1, 0, -1]])
     y_filter = np.array([[1, 2, 1], [0, 0, 0], [-1, -2, -1]])
-    convx = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding='same', padding_mode = 'replicate', bias=False)
-    convy = nn.Conv2d(1, 1, kernel_size=3 , stride=1, padding='same', padding_mode = 'replicate',bias=False)
+    convx = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding='same', padding_mode='replicate', bias=False)
+    convy = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding='same', padding_mode='replicate', bias=False)
     weights_x = torch.from_numpy(x_filter).float().unsqueeze(0).unsqueeze(0)
     weights_y = torch.from_numpy(y_filter).float().unsqueeze(0).unsqueeze(0)
 
@@ -59,23 +60,24 @@ def edge_loss2(out, target):
     convx.weight = nn.Parameter(weights_x)
     convy.weight = nn.Parameter(weights_y)
 
-    g_x = convx(target) # gradient in x
-    g_y = convy(target) # gradient in y
+    g_x = convx(target)  # gradient in x
+    g_y = convy(target)  # gradient in y
     
-    g_tot = torch.sqrt(g_x * g_x + g_y * g_y + 1e-8) # Sobel edge map
+    g_tot = torch.sqrt(g_x * g_x + g_y * g_y + 1e-8)  # Sobel edge map
     
-    pixel_diff = torch.abs(out - target)   # absolute pixel difference
-    tloss = torch.mean(g_tot * pixel_diff) # mean of (pixel difference * edge_strength)
+    pixel_diff = torch.abs(out - target)    # absolute pixel difference
+    tloss = torch.mean(g_tot * pixel_diff)  # mean of (pixel difference * edge_strength)
 
     return tloss
+
 
 # edge loss function 2 (max difference * mean sobel in patch)
 def edge_loss3(out, target):
 
     x_filter = np.array([[1, 0, -1], [2, 0, -2], [1, 0, -1]])
     y_filter = np.array([[1, 2, 1], [0, 0, 0], [-1, -2, -1]])
-    convx = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding='same', padding_mode = 'replicate', bias=False)
-    convy = nn.Conv2d(1, 1, kernel_size=3 , stride=1, padding='same', padding_mode = 'replicate',bias=False)
+    convx = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding='same', padding_mode='replicate', bias=False)
+    convy = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding='same', padding_mode='replicate', bias=False)
     weights_x = torch.from_numpy(x_filter).float().unsqueeze(0).unsqueeze(0)
     weights_y = torch.from_numpy(y_filter).float().unsqueeze(0).unsqueeze(0)
 
@@ -85,14 +87,14 @@ def edge_loss3(out, target):
     convx.weight = nn.Parameter(weights_x)
     convy.weight = nn.Parameter(weights_y)
 
-    g_x = convx(target) # gradient in x
-    g_y = convy(target) # gradient in y
+    g_x = convx(target)  # gradient in x
+    g_y = convy(target)  # gradient in y
     
-    g_tot = torch.sqrt(g_x * g_x + g_y * g_y + 1e-8) # Sobel edge map
+    g_tot = torch.sqrt(g_x * g_x + g_y * g_y + 1e-8)  # Sobel edge map
     
-    pixel_diff = torch.abs(out - target)    # absolute pixel difference
-    max_diff = float(torch.max(pixel_diff)) # max error
-    tloss = max_diff * torch.mean(g_tot)    # max error * edge_strength
+    pixel_diff = torch.abs(out - target)     # absolute pixel difference
+    max_diff = float(torch.max(pixel_diff))  # max error
+    tloss = max_diff * torch.mean(g_tot)     # max error * edge_strength
 
     return tloss
 

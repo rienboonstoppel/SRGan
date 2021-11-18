@@ -40,9 +40,10 @@ def get_scores_batch(real, gen):
     ssim = 0
     nrsme = 0
     for i in range(real.shape[0]):
-        _real = real[i,0].numpy()
-        _gen = gen[i,0].numpy()
+        _real = real[i, 0].numpy()
+        _gen = gen[i, 0].numpy()
         ncc += NCC(_real, _gen)
         ssim += SSIM(_real, _gen, gaussian_weights=True, sigma=1.5, use_sample_covariance=False)
         nrsme += NRSME(_real, _gen)
     return ncc/real.shape[0], ssim/real.shape[0], nrsme/real.shape[0]
+

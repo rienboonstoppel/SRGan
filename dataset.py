@@ -6,8 +6,6 @@ from torch.utils.data import Dataset
 from glob import glob
 import random
 import torch
-import torch.nn.functional as F
-
 
 
 class ImagePair(object):
