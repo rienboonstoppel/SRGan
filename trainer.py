@@ -6,6 +6,7 @@ from torch.autograd import Variable
 import sys
 from torchvision.utils import save_image
 from torch.utils.tensorboard import SummaryWriter
+from edgeloss import *
 
 
 class Trainer:
@@ -17,6 +18,8 @@ class Trainer:
                  b2=0.999,
                  start_epoch=1,
                  n_epochs=10,
+                 lambda_content=1,
+                 lambda_edge=0.3,
                  lambda_adv=5e-3,
                  lambda_pixel=1e-2,
                  sample_interval=100,
@@ -38,6 +41,8 @@ class Trainer:
 
         self.lambda_adv = lambda_adv
         self.lambda_pixel = lambda_pixel
+        self.lambda_content = lambda_content
+        self.lambda_edge = lambda_edge
         self.sample_interval = sample_interval
         self.epochs = n_epochs
         self.std = std
@@ -52,11 +57,13 @@ class Trainer:
             'train_loss_content_G': [],
             'train_loss_adversarial_G': [],
             'train_loss_pixel_G': [],
+            'train_loss_edge_G': [],
             'train_loss_D': [],
             'val_loss_G': [],
             'val_loss_content_G': [],
             'val_loss_adversarial_G': [],
             'val_loss_pixel_G': [],
+            'val_loss_edge_G': [],
             'val_loss_D': [],
         }
         self.scores = {
@@ -72,10 +79,10 @@ class Trainer:
         self.writer = SummaryWriter(output_dir)
 
     def make_grid(self, batch, gen, output_dir, name, batches_done):
-        img_grid = torch.cat(((batch['LR']*self.std).to(self.device),
-                              (batch['HR']*self.std).to(self.device),
-                              torch.clamp((gen*self.std), 0, 1),
-                              (batch['LR']*self.std).to(self.device) - (gen*self.std) + .5), -1)
+        img_grid = torch.cat(((batch['LR'] * self.std).to(self.device),
+                              (batch['HR'] * self.std).to(self.device),
+                              torch.clamp((gen * self.std), 0, 1),
+                              (batch['LR'] * self.std).to(self.device) - (gen * self.std) + .5), -1)
         path = os.path.join(output_dir, 'images', name, '%05d.png' % batches_done)
         save_image(img_grid, path, nrow=1, normalize=False)
         tb_grid = torchvision.utils.make_grid(img_grid, nrow=1)
@@ -127,8 +134,15 @@ class Trainer:
         real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1)).detach()
         loss_content = self.criterion_content(gen_features, real_features)
 
+        # Edge loss
+        loss_edge = edge_loss1(gen_hr, imgs_hr)
+
         # Total generator loss
-        loss_G = loss_content + self.lambda_adv * loss_GAN + self.lambda_pixel * loss_pixel
+        loss_G = self.lambda_content * loss_content + \
+                 self.lambda_adv * loss_GAN + \
+                 self.lambda_pixel * loss_pixel + \
+                 self.lambda_edge * loss_edge
+        # loss_G = .7 * loss_pixel + .3 * loss_edge
 
         loss_G.backward()
         self.optimizer_G.step()
@@ -156,6 +170,7 @@ class Trainer:
         self.metric['train_loss_content_G'].append(loss_content.item())
         self.metric['train_loss_adversarial_G'].append(loss_GAN.item())
         self.metric['train_loss_pixel_G'].append(loss_pixel.item())
+        self.metric['train_loss_edge_G'].append(loss_edge.item())
         self.metric['train_loss_D'].append(loss_D.item())
         return gen_hr
 
@@ -192,8 +207,14 @@ class Trainer:
         real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1)).detach()
         loss_content = self.criterion_content(gen_features, real_features)
 
+        # Edge loss
+        loss_edge = edge_loss1(gen_hr, imgs_hr)
+
         # Total generator loss
-        loss_G = loss_content + self.lambda_adv * loss_GAN + self.lambda_pixel * loss_pixel
+        loss_G = self.lambda_content * loss_content + \
+                 self.lambda_adv * loss_GAN + \
+                 self.lambda_pixel * loss_pixel + \
+                 self.lambda_edge * loss_edge
 
         # ---------------------
         #  Validate Discriminator
@@ -213,6 +234,7 @@ class Trainer:
         self.metric['val_loss_content_G'].append(loss_content.item())
         self.metric['val_loss_adversarial_G'].append(loss_GAN.item())
         self.metric['val_loss_pixel_G'].append(loss_pixel.item())
+        self.metric['val_loss_edge_G'].append(loss_pixel.item())
         self.metric['val_loss_D'].append(loss_D.item())
 
         ncc, ssim, nrsme = get_scores_batch(imgs_hr.cpu(), gen_hr.detach().cpu())
@@ -239,6 +261,7 @@ class Trainer:
                                                  'Train_pixel': self.metric['train_loss_pixel_G'][-1],
                                                  'Train_adversarial': self.metric['train_loss_adversarial_G'][-1],
                                                  'Train_content': self.metric['train_loss_content_G'][-1],
+                                                 'Train_edge': self.metric['train_loss_edge_G'][-1],
                                                  }, batches_done)
 
                     self.writer.add_scalars(

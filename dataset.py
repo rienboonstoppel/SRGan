@@ -59,7 +59,7 @@ def data_split(dataset, patients_frac=1, train_frac=0.7, val_frac=.15, test_frac
     elif dataset == 'validation':
         ids_split = ids[split1:split2]
     elif dataset == 'test':
-        ids_split = ids[split2:]
+        ids_split = ids[split2:split3]
 
     samples = list()
     for num in tqdm(ids_split, desc='Load {} set\t'.format(dataset), bar_format='{l_bar}{bar:15}{r_bar}{bar:-15b}'):
