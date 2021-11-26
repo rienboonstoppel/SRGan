@@ -41,13 +41,15 @@ class ImagePair(object):
 
 
 def data_split(dataset, patients_frac=1, train_frac=0.7, val_frac=.15, test_frac=.15, numslices=50, root_dir='data',
-               randomseed = 7886462529168327085):
+               randomseed=7886462529168327085):
+    # define paths
     random.seed(randomseed)
     path   = root_dir + "/brain_simulated_t1w_mri/HR/"
     fnames = glob(path + "*.nii.gz")
     ids    = sorted(list(map(int, [(fnames[i][-60:-54]) for i in range(len(fnames))])))
     random.shuffle(ids)
 
+    # define data splits
     split1 = int(np.floor(patients_frac*train_frac*len(ids)))
     split2 = split1+int(np.floor(patients_frac*val_frac*len(ids)))
     split3 = split2+int(np.floor(patients_frac*test_frac*len(ids)))
@@ -59,6 +61,7 @@ def data_split(dataset, patients_frac=1, train_frac=0.7, val_frac=.15, test_frac
     elif dataset == 'test':
         ids_split = ids[split2:split3]
 
+    # make arrays
     samples = list()
     for num in tqdm(ids_split, desc='Load {} set\t'.format(dataset), bar_format='{l_bar}{bar:15}{r_bar}{bar:-15b}'):
         data = ImagePair(num, root_dir=root_dir)
@@ -151,3 +154,35 @@ class Normalize(torch.nn.Module):
         return {'LR': (sample['LR']-self.mean)/self.std,
                 'HR': (sample['HR']-self.mean)/self.std,
                 'id': sample['id']}
+
+
+def MakePatchStartArray(image, patchSize = np.array([64,64]), ovlPerc = np.array([0.5, 0.5])):
+    size03D  = (np.array(image.shape)).astype(np.int)
+    # size03D  = [224, 224, 70]
+    # show the X and Y sizes
+    size0    = np.array([size03D[0], size03D[1]])
+    # the third part of size03D shows the amount of slices in the image (Z direction)
+    nrSlices = size03D[2]
+    # define the amount of patches which need to be made, keep in mind the overlap of the patches (this is in X and in Y)
+    numberOfPatches = (np.divide(size0, (ovlPerc * patchSize))).astype(int) - 1
+    # define the image size which will be the output when setting all patches back to an image
+    roundedFull = patchSize + (numberOfPatches - 1) * ovlPerc * patchSize
+    # empty space that remains after dividing images in patches
+    residual    = size0 - roundedFull
+    # difference between each patch (in space) to divide the patches over the image equally
+    deltaPix    = np.divide(residual, (numberOfPatches - 1))
+    # start an empty list to add the start arrays of the X direction to
+    startArrayY = []
+    # start an empty list to add the start arrays of the Y direction to
+    startArrayX = []
+    # loop over the amount of patches needed in the X direction
+    for x in range(numberOfPatches[0]):
+        # define the startpoint for every slice in X direction
+        startArrayX.append(int(ovlPerc[0] * patchSize[0] * x + deltaPix[0] * x + 0.5))
+    # loop over the amount of patches needed in the Y direction
+    for y in range(numberOfPatches[1]):
+        # define the startpoint for every slice in Y direction
+        startArrayY.append(int(ovlPerc[1] * patchSize[1] * y + deltaPix[1] * y + 0.5))
+    # return the start position of X and Y, the amount of patches in the slice and the
+    # number of slices in the image when the method is called
+    return startArrayX,startArrayY,numberOfPatches,nrSlices,size03D,size0
