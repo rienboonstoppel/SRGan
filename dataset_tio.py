@@ -8,25 +8,26 @@ from glob import glob
 import random
 import torch
 import torchio as tio
+from torchio.data.subject import Subject
+from torchio.transforms.intensity_transform import IntensityTransform
 
 
 def perc_norm(img3d, perc=(1,99)):
     min_val, max_val = np.percentile(img3d, perc)
-    img_norm = ((img3d.astype(float) - min_val) /
-                   (max_val - min_val)).astype(np.float32)
+    img_norm = ((img3d.astype(float) - min_val) / (max_val - min_val)).astype(np.float32)
     return img_norm
 
 
 def slice_middle(img, numslices):
     diff = (img.shape[2]-numslices)/2
-    img = img[:,:,int(np.ceil(diff)):img.shape[2]-int(np.floor(diff))]
+    img = img[:, :, int(np.ceil(diff)):img.shape[2]-int(np.floor(diff))]
     return img
 
 
 class ImagePair(object):
-    def __init__(self, number, root_dir='data', slice_middle=50):
+    def __init__(self, number, root_dir='data', select_slices=50):
         self._number = number
-        self.slice_middle = slice_middle
+        self.select_slices = select_slices
         self.path = root_dir + "/brain_simulated_t1w_mri"
         self.img_fname = "23-Aug-2021_Ernst_labels_{:06d}_" \
                          "3T_T1w_MPR1_img_act_1_contrast_1".format(self._number)
@@ -46,9 +47,9 @@ class ImagePair(object):
     def subject(self):
         self.to_nifty()
 
-        if self.slice_middle is not None:
-            LR = slice_middle(self.LR.get_fdata(), self.slice_middle)
-            HR = slice_middle(self.HR.get_fdata(), self.slice_middle)
+        if self.select_slices is not None:
+            LR = slice_middle(self.LR.get_fdata(), self.select_slices)
+            HR = slice_middle(self.HR.get_fdata(), self.select_slices)
         else:
             LR = self.LR.get_fdata()
             HR = self.LR.get_fdata()
@@ -96,7 +97,7 @@ def data_split(dataset, patients_frac=1, train_frac=0.7, val_frac=.15, test_frac
     subjects = []
     for num in tqdm(ids_split, desc='Load {} set\t'.format(dataset), bar_format='{l_bar}{bar:15}{r_bar}{bar:-15b}',
                     leave=True, position=0):
-        data = ImagePair(num, root_dir=root_dir, slice_middle=numslices)
+        data = ImagePair(num, root_dir=root_dir, select_slices=numslices)
         subjects.append(data.subject())
     return subjects
 
@@ -106,8 +107,45 @@ def calculate_overlap(img, patch_size, ovl_perc):
     ovl_perc = np.array([ovl_perc[0], ovl_perc[1]])
     size = img.shape
     sizeXY = np.array([size[1], size[2]])
-    nr_patches = np.divide(sizeXY, ovl_perc*patch_size).astype(int) - 1
+    nr_patches = np.divide(sizeXY, ovl_perc * patch_size).astype(int) - 1
     residual = sizeXY - (patch_size + (nr_patches - 1) * ovl_perc * patch_size)
     overlap = (patch_size * np.array(ovl_perc) + np.ceil(np.divide(residual, nr_patches))).astype(int)
-    return (*overlap,0), nr_patches[0]*nr_patches[1]*size[3]
+    return (*overlap, 0), nr_patches[0] * nr_patches[1] * size[3]
+
+
+class Normalize(IntensityTransform):
+    def __init__(
+            self,
+            std,
+            mean=0,
+            **kwargs
+            ):
+        super().__init__(**kwargs)
+        self.std = std
+        self.mean = mean
+
+    def apply_transform(self, subject: Subject) -> Subject:
+        for image_name, image in self.get_images_dict(subject).items():
+            self.apply_normalization(subject, image_name)
+        return subject
+
+    def apply_normalization(
+            self,
+            subject: Subject,
+            image_name: str,
+            ) -> None:
+        image = subject[image_name]
+        standardized = self.znorm(
+            image.data,
+            self.std,
+            self.mean,
+        )
+        image.set_data(standardized)
+
+    @staticmethod
+    def znorm(tensor: torch.Tensor, std, mean) -> torch.Tensor:
+        tensor = tensor.clone().float()
+        tensor -= mean
+        tensor /= std
+        return tensor
 
