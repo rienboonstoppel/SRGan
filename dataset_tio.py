@@ -95,8 +95,10 @@ def data_split(dataset, patients_frac=1, train_frac=0.7, val_frac=.15, test_frac
 
     # make arrays
     subjects = []
-    for num in tqdm(ids_split, desc='Load {} set\t'.format(dataset), bar_format='{l_bar}{bar:15}{r_bar}{bar:-15b}',
-                    leave=True, position=0):
+    print('Loading {} set...'.format(dataset))
+    # for num in tqdm(ids_split, desc='Load {} set\t'.format(dataset), bar_format='{l_bar}{bar:15}{r_bar}{bar:-15b}',
+    #                 leave=True, position=0):
+    for num in ids_split:
         data = ImagePair(num, root_dir=root_dir, select_slices=numslices)
         subjects.append(data.subject())
     return subjects

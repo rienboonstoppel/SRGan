@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader
 from collections import OrderedDict
 import argparse
 from collections import namedtuple
+from pytorch_lightning.loggers import TensorBoardLogger
 
 import torch
 import torch.nn as nn
@@ -20,13 +21,13 @@ import torch.nn.functional as F
 import torchvision.models.vgg as vgg
 from dataset_tio import ImagePair, data_split, Normalize, calculate_overlap
 
-print(os.getcwd())
-torch.cuda.empty_cache()
+# print(os.getcwd())
+# torch.cuda.empty_cache()
 
 
 def main():
-    train_subjects = data_split('training')
-    val_subjects = data_split('validation')
+    train_subjects = data_split('training', patients_frac=.5)
+    val_subjects = data_split('validation', patients_frac=.5)
 
     std = 0.3548
 
@@ -40,15 +41,14 @@ def main():
         train_subjects, transform=training_transform)
 
     val_set = tio.SubjectsDataset(
-        val_subjects, transform=None)
+        val_subjects, transform=training_transform)
 
-
-    batch_size = 32
+    batch_size = 128
     training_batch_size = batch_size
     validation_batch_size = batch_size
 
-    num_workers = 0
-    patch_size = (64,64)
+    num_workers = 4
+    patch_size = (64, 64)
     ovl_perc = (.5, .5)
     overlap, nr_patches = calculate_overlap(train_subjects[0]['LR'], patch_size, ovl_perc)
     samples_per_volume = nr_patches
@@ -80,15 +80,20 @@ def main():
         training_queue, batch_size=training_batch_size)
 
     val_loader = torch.utils.data.DataLoader(
-        val_queue, batch_size=training_batch_size)
+        val_queue, batch_size=validation_batch_size)
 
     generator = GeneratorRRDB(channels=1, filters=64, num_res_blocks=1)
     discriminator = Discriminator(input_shape=(1, 64, 64))
     # feature_extractor = FeatureExtractor().to(device)
 
+    logger = TensorBoardLogger("log", name="meuk", default_hp_metric=False)
+    # logger.log_metrics('tensorboard_logs')
+
     model = LitTrainer(netG=generator, netD=discriminator)
-    trainer = pl.Trainer(gpus= 2, max_epochs = 10)
-    trainer.fit(model, train_dataloaders=training_loader)
+    trainer = pl.Trainer(gpus=4, max_epochs=50, logger=logger, log_every_n_steps=50, strategy='ddp')
+    trainer.fit(model, train_dataloaders=training_loader, val_dataloaders=val_loader)
+
 
 if __name__ == "__main__":
     main()
+
