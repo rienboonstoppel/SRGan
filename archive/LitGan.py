@@ -6,7 +6,7 @@ import torch
 import matplotlib.pyplot as plt
 import torchio as tio
 import torchvision
-from trainer_lit import LitTrainer
+from trainer_gan import LitTrainer
 from generator import GeneratorRRDB
 from discriminator import Discriminator
 from feature_extractor import FeatureExtractor

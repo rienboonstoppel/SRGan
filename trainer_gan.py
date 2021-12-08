@@ -68,7 +68,7 @@ class LitTrainer(pl.LightningModule):
 
             self.log('Epoch loss/generator', {"Train": g_loss}, on_step=False, on_epoch=True, sync_dist=True)
 
-            if batch_idx % 100 == 0:
+            if batch_idx % 10 == 0:
                 grid = self.make_grid(imgs_lr, imgs_hr, self.gen_hr)
                 self.logger.experiment.add_image('generated images/train', grid, batch_idx*(self.current_epoch+1), dataformats='CHW')
 
@@ -114,7 +114,7 @@ class LitTrainer(pl.LightningModule):
             self.log('Epoch loss/generator', {"Val": g_loss}, on_step=False, on_epoch=True, sync_dist=True)
             self.log('Epoch loss/discriminator', {"Val": d_loss}, on_step=False, on_epoch=True, sync_dist=True)
 
-            if batch_idx % 100 == 0:
+            if batch_idx % 10 == 0:
                 grid = self.make_grid(imgs_lr, imgs_hr, gen_hr)
                 self.logger.experiment.add_image('generated images/val', grid, batch_idx*(self.current_epoch+1), dataformats='CHW')
 
