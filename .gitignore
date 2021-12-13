@@ -116,11 +116,4 @@ dmypy.json
 PyTorch-GAN/
 data/
 .idea/
-main.py
 shell.txt
-losses_linear.png
-losses_logit.png
-plots/run-Generator batch loss_Train_adversarial-tag-Generator batch loss.csv
-plots/run-Generator batch loss_Train_content-tag-Generator batch loss.csv
-plots/run-Generator batch loss_Train_edge-tag-Generator batch loss.csv
-plots/run-Generator batch loss_Train_pixel-tag-Generator batch loss.csv
