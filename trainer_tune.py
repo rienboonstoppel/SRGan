@@ -12,10 +12,12 @@ from edgeloss import edge_loss2
 import argparse
 from dataset_tio import data_split, Normalize, calculate_overlap
 
+
 class LitTrainer(pl.LightningModule):
+
     @staticmethod
     def add_model_specific_args(parent_parser):
-        parser = parent_parser.add_argument_group("LitModel")
+        parser = parent_parser.add_argument_group('LitModel')
         parser.add_argument('--learning_rate', type=float, default=1e-2)
         # parser.add_argument('--std', type=float, default=-.3548)
         return parent_parser
@@ -25,23 +27,16 @@ class LitTrainer(pl.LightningModule):
                  config,
                  args,
                  # lr: float = 0.0002,
-                 # std: float = 0.3548,
                  **kwargs
                  ):
         super().__init__()
         self.save_hyperparameters(ignore=['netG'])
-
-        self.netG = netG
-
-        self.criterion_edge = edge_loss2
-        self.criterion_pixel = torch.nn.L1Loss()
-
         self.learning_rate = config['learning_rate']
 
+        self.netG = netG
         self.args = args
-        # print('test', args.std)
-        # self.std = args.std
-        # print('test1', self.std)
+        self.criterion_edge = edge_loss2
+        self.criterion_pixel = torch.nn.L1Loss()
 
     def make_grid(self, imgs_lr, imgs_hr, gen_hr):
         imgs_lr = torch.clamp((imgs_lr[:10]*self.args.std), 0, 1).squeeze()
@@ -74,11 +69,12 @@ class LitTrainer(pl.LightningModule):
                                          'train_loss_pixel': loss_pixel,
                                          }, on_step=True, on_epoch=False, sync_dist=True)
 
-        self.log('Epoch loss/generator', {'Train': g_loss}, on_step=False, on_epoch=True, sync_dist=True)
+        self.log('Epoch loss/generator', {'Train': g_loss,
+                                          }, on_step=False, on_epoch=True, sync_dist=True)
 
-        if batch_idx % 100 == 0:
-            grid = self.make_grid(imgs_lr, imgs_hr, self.gen_hr)
-            self.logger.experiment.add_image('generated images/train', grid, batch_idx*(self.current_epoch+1), dataformats='CHW')
+        # if batch_idx % 100 == 0:
+        #     grid = self.make_grid(imgs_lr, imgs_hr, self.gen_hr)
+        #     self.logger.experiment.add_image('generated images/train', grid, batch_idx*(self.current_epoch+1), dataformats='CHW')
 
         return g_loss
 
@@ -94,120 +90,19 @@ class LitTrainer(pl.LightningModule):
             g_loss = 0.3 * loss_edge + 0.7 * loss_pixel
             self.log('Epoch loss/generator', {'Val': g_loss}, on_step=False, on_epoch=True, sync_dist=True)
 
-            self.log('val_loss', g_loss)
+        # if batch_idx % 50 == 0:
+        #     grid = self.make_grid(imgs_lr, imgs_hr, gen_hr)
+        #     self.logger.experiment.add_image('generated images/val', grid, batch_idx*(self.current_epoch+1), dataformats='CHW')
 
-        if batch_idx % 50 == 0:
-            grid = self.make_grid(imgs_lr, imgs_hr, gen_hr)
-            self.logger.experiment.add_image('generated images/val', grid, batch_idx*(self.current_epoch+1), dataformats='CHW')
-
-        return {"val_loss": g_loss}
-
-    # def training_epoch_end(self, outputs):
-    #     print(outputs)
+        return g_loss
 
     def validation_epoch_end(self, outputs):
-        # print(outputs)
-        avg_loss = torch.stack(
-            [x['val_loss'] for x in outputs]).mean()
-        self.log('val_loss', avg_loss)
+        avg_loss = torch.mean(torch.stack(outputs))
+        self.log("val_loss", avg_loss, sync_dist=True)
 
-    # def data(self):
-    #     args = self.args
-    #     train_subjects = data_split('training', patients_frac=args.patients_frac, root_dir=args.root_dir)
-    #     val_subjects = data_split('validation', patients_frac=args.patients_frac, root_dir=args.root_dir)
-    #
-    #     training_transform = tio.Compose([
-    #         Normalize(std=self.args.std),
-    #         # tio.RandomNoise(p=0.5),
-    #         tio.RandomFlip(),
-    #     ])
-    #
-    #     training_set = tio.SubjectsDataset(
-    #         train_subjects, transform=training_transform)
-    #
-    #     val_set = tio.SubjectsDataset(
-    #         val_subjects, transform=training_transform)
-    #
-    #     batch_size = args.batch_size
-    #     self.training_batch_size = batch_size
-    #     self.validation_batch_size = batch_size
-    #
-    #     num_workers = args.num_workers
-    #     patch_size = (args.patch_size, args.patch_size)
-    #     ovl_perc = (args.patch_overlap, args.patch_overlap)
-    #     overlap, nr_patches = calculate_overlap(train_subjects[0]['LR'], patch_size, ovl_perc)
-    #     samples_per_volume = nr_patches
-    #
-    #     max_queue_length = samples_per_volume * 100
-    #     sampler = tio.data.GridSampler(patch_size=(args.patch_size, args.patch_size, 1),
-    #                                    patch_overlap=overlap)  # , padding_mode=0)
-    #
-    #     self.training_queue = tio.Queue(
-    #         subjects_dataset=training_set,
-    #         max_length=max_queue_length,
-    #         samples_per_volume=samples_per_volume,
-    #         sampler=sampler,
-    #         num_workers=num_workers,
-    #         shuffle_subjects=True,
-    #         shuffle_patches=True,
-    #     )
-    #
-    #     self.val_queue = tio.Queue(
-    #         subjects_dataset=val_set,
-    #         max_length=max_queue_length,
-    #         samples_per_volume=samples_per_volume,
-    #         sampler=sampler,
-    #         num_workers=num_workers,
-    #         shuffle_subjects=True,
-    #         shuffle_patches=True,
-    #     )
-
-    def train_dataloader(self):
+    def prepare_data(self):
         args = self.args
         train_subjects = data_split('training', patients_frac=args.patients_frac, root_dir=args.root_dir)
-
-        training_transform = tio.Compose([
-            Normalize(std=args.std),
-            # tio.RandomNoise(p=0.5),
-            tio.RandomFlip(),
-        ])
-
-        training_set = tio.SubjectsDataset(
-            train_subjects, transform=training_transform)
-
-        batch_size = args.batch_size
-        training_batch_size = batch_size
-
-        num_workers = args.num_workers
-        patch_size = (args.patch_size, args.patch_size)
-        ovl_perc = (args.patch_overlap, args.patch_overlap)
-        overlap, nr_patches = calculate_overlap(train_subjects[0]['LR'], patch_size, ovl_perc)
-        samples_per_volume = nr_patches
-
-        max_queue_length = samples_per_volume * 100
-        sampler = tio.data.GridSampler(patch_size=(args.patch_size, args.patch_size, 1),
-                                       patch_overlap=overlap)  # , padding_mode=0)
-
-        training_queue = tio.Queue(
-            subjects_dataset=training_set,
-            max_length=max_queue_length,
-            samples_per_volume=samples_per_volume,
-            sampler=sampler,
-            num_workers=num_workers,
-            shuffle_subjects=True,
-            shuffle_patches=True,
-        )
-
-        training_loader = torch.utils.data.DataLoader(
-            training_queue,
-            batch_size=training_batch_size
-        )
-
-        return training_loader
-
-    def val_dataloader(self):
-        args = self.args
-        # print('test2', args.std)
         val_subjects = data_split('validation', patients_frac=args.patients_frac, root_dir=args.root_dir)
 
         training_transform = tio.Compose([
@@ -216,35 +111,52 @@ class LitTrainer(pl.LightningModule):
             tio.RandomFlip(),
         ])
 
-        val_set = tio.SubjectsDataset(
+        self.training_set = tio.SubjectsDataset(
+            train_subjects, transform=training_transform)
+
+        self.val_set = tio.SubjectsDataset(
             val_subjects, transform=training_transform)
 
-        batch_size = args.batch_size
-        training_batch_size = batch_size
+        overlap, nr_patches = calculate_overlap(train_subjects[0]['LR'],
+                                                (args.patch_size, args.patch_size),
+                                                (args.patch_overlap, args.patch_overlap)
+                                                )
+        self.samples_per_volume = nr_patches
 
-        num_workers = args.num_workers
-        patch_size = (args.patch_size, args.patch_size)
-        ovl_perc = (args.patch_overlap, args.patch_overlap)
-        overlap, nr_patches = calculate_overlap(val_subjects[0]['LR'], patch_size, ovl_perc)
-        samples_per_volume = nr_patches
+        self.sampler = tio.data.GridSampler(patch_size=(args.patch_size, args.patch_size, 1),
+                                            patch_overlap=overlap,
+                                            # padding_mode=0,
+                                            )
 
-        max_queue_length = samples_per_volume * 100
-        sampler = tio.data.GridSampler(patch_size=(args.patch_size, args.patch_size, 1),
-                                       patch_overlap=overlap)  # , padding_mode=0)
-
-        val_queue = tio.Queue(
-            subjects_dataset=val_set,
-            max_length=max_queue_length,
-            samples_per_volume=samples_per_volume,
-            sampler=sampler,
-            num_workers=num_workers,
+    def train_dataloader(self):
+        training_queue = tio.Queue(
+            subjects_dataset=self.training_set,
+            max_length=self.samples_per_volume*100,
+            samples_per_volume=self.samples_per_volume,
+            sampler=self.sampler,
+            num_workers=self.args.num_workers,
             shuffle_subjects=True,
             shuffle_patches=True,
         )
+        training_loader = torch.utils.data.DataLoader(
+            training_queue,
+            batch_size=self.args.batch_size
+        )
+        return training_loader
 
+    def val_dataloader(self):
+        val_queue = tio.Queue(
+            subjects_dataset=self.val_set,
+            max_length=self.samples_per_volume*100,
+            samples_per_volume=self.samples_per_volume,
+            sampler=self.sampler,
+            num_workers=self.args.num_workers,
+            shuffle_subjects=True,
+            shuffle_patches=True,
+        )
         val_loader = torch.utils.data.DataLoader(
             val_queue,
-            batch_size=training_batch_size
+            batch_size=self.args.batch_size
         )
         return val_loader
 
@@ -257,5 +169,4 @@ class LitTrainer(pl.LightningModule):
                 'scheduler': torch.optim.lr_scheduler.ExponentialLR(opt_g, gamma=0.99999),
             },
         }
-
 

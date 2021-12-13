@@ -14,9 +14,6 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-from dataset_tio import data_split, Normalize, calculate_overlap
-import signal
-import readchar
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
 from ray import tune
 from ray.tune import CLIReporter
@@ -34,17 +31,17 @@ def train_tune(config, args):
     # discriminator = Discriminator(input_shape=(1, 64, 64))
     # feature_extractor = FeatureExtractor().to(device)
 
-    logger = TensorBoardLogger('log', name='tune_test', default_hp_metric=False)
+    logger = TensorBoardLogger(save_dir=tune.get_trial_dir(), name="", version=".")
     lr_monitor = LearningRateMonitor(logging_interval='step')
-    checkpoint_callback = ModelCheckpoint(
-        monitor="val_loss",
-        dirpath="log/baseline",
-        filename="baseline-{epoch:002d}",
-        save_top_k=3,
-        mode="min",
-    )
+    # checkpoint_callback = ModelCheckpoint(
+    #     monitor='val_loss',
+    #     dirpath='/mnt/beta/djboonstoppel/Code/log/baseline',
+    #     filename='baseline-{epoch:002d}',
+    #     save_top_k=3,
+    #     mode='min',
+    # )
 
-    metrics = {"loss": "val_loss"}
+    # metrics = {'loss': 'val_loss'}
 
     model = LitTrainer_conventional(netG=generator, config=config, args=args)
 
@@ -53,10 +50,17 @@ def train_tune(config, args):
         max_epochs=args.max_epochs,
         logger=logger,
         log_every_n_steps=100,
-        strategy='ddp',
+        strategy='ddp_spawn',
         precision=args.precision,
-        callbacks=[lr_monitor, checkpoint_callback, TuneReportCallback(metrics, on="validation_end")],
-        num_sanity_val_steps=args.num_sanity_val_steps
+        callbacks=[
+            lr_monitor,
+            TuneReportCallback(
+                {
+                    "loss": "val_loss",
+                },
+                on="validation_end"),
+        ],
+        enable_progress_bar=False,
     )
 
     trainer.fit(
@@ -72,7 +76,7 @@ def main():
     parser.add_argument('--patch_size', default=64, type=int)
     parser.add_argument('--patch_overlap', default=.5, type=float)
     parser.add_argument('--num_workers', default=4, type=int)
-    parser.add_argument('--root_dir', default='data', type=str)
+    parser.add_argument('--root_dir', default='/mnt/beta/djboonstoppel/Code/data', type=str)
     parser.add_argument('--num_samples', required=True, type=int)
 
     parser = pl.Trainer.add_argparse_args(parser)
@@ -80,13 +84,13 @@ def main():
     args = parser.parse_args()
 
     # config = {
-    #     "learning_rate": 0.01,
+    #     'learning_rate': 0.01,
     # }
     # # print(args.std)
     # train_tune(config, args)
 
     config = {
-        "learning_rate": tune.loguniform(1e-4, 1e-1),
+        'learning_rate': tune.loguniform(1e-4, 1e-2),
     }
 
     scheduler = ASHAScheduler(
@@ -98,13 +102,11 @@ def main():
         parameter_columns=["learning_rate"],
         metric_columns=["loss", "training_iteration"])
 
-    resources_per_trial = {"cpu": 24, "gpu": args.gpus}
+    resources_per_trial = {'cpu': 24, 'gpu': args.gpus}
 
     train_fn_with_parameters = tune.with_parameters(
         train_tune,
         args=args
-        # num_epochs=args.max_epochs,
-        # num_gpus=args.gpus,
         )
 
     analysis = tune.run(
@@ -116,11 +118,12 @@ def main():
         num_samples=args.num_samples,
         scheduler=scheduler,
         progress_reporter=reporter,
-        name="tune_test")
+        name='tune_test5',
+    )
 
-    print("Best hyperparameters found were: ", analysis.best_config)
+    print('Best hyperparameters found were: ', analysis.best_config)
+
 
 if __name__ == '__main__':
-    # signal.signal(signal.SIGINT, handler)
     main()
 
