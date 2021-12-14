@@ -31,7 +31,10 @@ class LitTrainer(pl.LightningModule):
                  ):
         super().__init__()
         self.save_hyperparameters(ignore=['netG'])
-        self.learning_rate = config['learning_rate']
+        # self.learning_rate = config['learning_rate']
+        self.patients_frac, self.patch_size, self.batch_size = config['abc']
+        # self.batch_size = config['batch_size']
+        # self.patch_size = config['patch_size']
 
         self.netG = netG
         self.args = args
@@ -102,8 +105,8 @@ class LitTrainer(pl.LightningModule):
 
     def prepare_data(self):
         args = self.args
-        train_subjects = data_split('training', patients_frac=args.patients_frac, root_dir=args.root_dir)
-        val_subjects = data_split('validation', patients_frac=args.patients_frac, root_dir=args.root_dir)
+        train_subjects = data_split('training', patients_frac=self.patients_frac, root_dir=args.root_dir)
+        val_subjects = data_split('validation', patients_frac=self.patients_frac, root_dir=args.root_dir)
 
         training_transform = tio.Compose([
             Normalize(std=args.std),
@@ -118,12 +121,12 @@ class LitTrainer(pl.LightningModule):
             val_subjects, transform=training_transform)
 
         overlap, nr_patches = calculate_overlap(train_subjects[0]['LR'],
-                                                (args.patch_size, args.patch_size),
+                                                (self.patch_size, self.patch_size),
                                                 (args.patch_overlap, args.patch_overlap)
                                                 )
         self.samples_per_volume = nr_patches
 
-        self.sampler = tio.data.GridSampler(patch_size=(args.patch_size, args.patch_size, 1),
+        self.sampler = tio.data.GridSampler(patch_size=(self.patch_size, self.patch_size, 1),
                                             patch_overlap=overlap,
                                             # padding_mode=0,
                                             )
@@ -140,7 +143,7 @@ class LitTrainer(pl.LightningModule):
         )
         training_loader = torch.utils.data.DataLoader(
             training_queue,
-            batch_size=self.args.batch_size
+            batch_size=self.batch_size
         )
         return training_loader
 
@@ -156,12 +159,12 @@ class LitTrainer(pl.LightningModule):
         )
         val_loader = torch.utils.data.DataLoader(
             val_queue,
-            batch_size=self.args.batch_size
+            batch_size=self.batch_size
         )
         return val_loader
 
     def configure_optimizers(self):
-        lr = self.learning_rate
+        lr = self.args.learning_rate
         opt_g = torch.optim.SGD(self.netG.parameters(), lr=lr, momentum=0.9, nesterov=True)
         return {
             'optimizer': opt_g,

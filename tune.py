@@ -31,15 +31,15 @@ def train_tune(config, args):
     # discriminator = Discriminator(input_shape=(1, 64, 64))
     # feature_extractor = FeatureExtractor().to(device)
 
-    logger = TensorBoardLogger(save_dir=tune.get_trial_dir(), name="", version=".")
+    # logger = TensorBoardLogger(save_dir=tune.get_trial_dir(), name="", version=".")
     lr_monitor = LearningRateMonitor(logging_interval='step')
-    # checkpoint_callback = ModelCheckpoint(
-    #     monitor='val_loss',
-    #     dirpath='/mnt/beta/djboonstoppel/Code/log/baseline',
-    #     filename='baseline-{epoch:002d}',
-    #     save_top_k=3,
-    #     mode='min',
-    # )
+    checkpoint_callback = ModelCheckpoint(
+        monitor='val_loss',
+        dirpath='/mnt/beta/djboonstoppel/Code/log/baseline',
+        filename='baseline-{epoch:002d}',
+        save_top_k=3,
+        mode='min',
+    )
 
     # metrics = {'loss': 'val_loss'}
 
@@ -48,7 +48,7 @@ def train_tune(config, args):
     trainer = pl.Trainer(
         gpus=args.gpus,
         max_epochs=args.max_epochs,
-        logger=logger,
+        # logger=logger,
         log_every_n_steps=100,
         strategy='ddp_spawn',
         precision=args.precision,
@@ -85,13 +85,27 @@ def main():
 
     # config = {
     #     'learning_rate': 0.01,
+    #     'patch_size': 128,
+    #     'batch_size': 64,
     # }
     # # print(args.std)
     # train_tune(config, args)
 
+    patients_fracs = np.around(np.arange(0.1, 0.6, 0.1), 1)
+    patch_size = [32, 64, 128]
+    batch_size = [1024, 256, 64]
+
+    def _iter():
+        for patients_frac in patients_fracs:
+            for i in range(len(patch_size)):
+                yield patients_frac, patch_size[i], batch_size[i]
+
     config = {
-        'learning_rate': tune.loguniform(1e-4, 1e-2),
+        "abc": tune.grid_search(list(_iter())),
     }
+    # config = {
+    #     'learning_rate': tune.loguniform(1e-4, 1e-2),
+    # }
 
     scheduler = ASHAScheduler(
         max_t=args.max_epochs,
@@ -99,7 +113,7 @@ def main():
         reduction_factor=2)
 
     reporter = CLIReporter(
-        parameter_columns=["learning_rate"],
+        parameter_columns=["abc"],
         metric_columns=["loss", "training_iteration"])
 
     resources_per_trial = {'cpu': 24, 'gpu': args.gpus}
@@ -118,7 +132,7 @@ def main():
         num_samples=args.num_samples,
         scheduler=scheduler,
         progress_reporter=reporter,
-        name='tune_test5',
+        name='tune_patients_fracs',
     )
 
     print('Best hyperparameters found were: ', analysis.best_config)
