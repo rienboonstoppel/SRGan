@@ -18,39 +18,28 @@ class LitTrainer(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = parent_parser.add_argument_group('LitModel')
-        # parser.add_argument('--learning_rate', type=float, default=1e-2)
-        parser.add_argument('--std', type=float, default=-.3548)
+        parser.add_argument('--learning_rate', type=float, default=1e-2)
+        # parser.add_argument('--std', type=float, default=-.3548)
         return parent_parser
 
     def __init__(self,
                  netG,
                  config,
                  args,
+                 # lr: float = 0.0002,
                  **kwargs
                  ):
         super().__init__()
         self.save_hyperparameters(ignore=['netG'])
         self.learning_rate = config['learning_rate']
-        self.patients_frac = config['patients_frac']
-        self.patch_overlap = config['patch_overlap']
-        self.batch_size = config['batch_size']
-        self.patch_size = config['patch_size']
+        self.patients_frac = config['frac_patch_batch'][0]
+        self.batch_size = config['frac_patch_batch'][2]
+        self.patch_size = config['frac_patch_batch'][1]
 
         self.netG = netG
         self.args = args
         self.criterion_edge = edge_loss2
         self.criterion_pixel = torch.nn.L1Loss()
-
-    def make_grid(self, imgs_lr, imgs_hr, gen_hr):
-        imgs_lr = torch.clamp((imgs_lr[:10]*self.args.std), 0, 1).squeeze()
-        imgs_hr = torch.clamp((imgs_hr[:10]*self.args.std), 0, 1).squeeze()
-        gen_hr = torch.clamp((gen_hr[:10]*self.args.std), 0, 1).squeeze()
-        diff = (imgs_hr-gen_hr)*2 + .5
-
-        img_grid = torch.cat([torch.stack([a, b, c, d]) for a, b, c, d in zip(imgs_lr, imgs_hr, gen_hr, diff)]).unsqueeze(1)
-
-        tb_grid = torchvision.utils.make_grid(img_grid, nrow=4)
-        return tb_grid
 
     def forward(self, inputs):
         return self.netG(inputs)
@@ -68,21 +57,8 @@ class LitTrainer(pl.LightningModule):
         loss_pixel = self.criterion_pixel(self.gen_hr, imgs_hr)
         g_loss = 0.3 * loss_edge + 0.7 * loss_pixel
 
-        self.log('Step loss/generator', {'train_loss_edge': loss_edge,
-                                         'train_loss_pixel': loss_pixel,
-                                         }, on_step=True, on_epoch=False)
-
-        self.log('Epoch loss/generator', {'Train': g_loss,
-                                          }, on_step=False, on_epoch=True)
-
-        # if batch_idx % 100 == 0:
-        #     grid = self.make_grid(imgs_lr, imgs_hr, self.gen_hr)
-        #     self.logger.experiment.add_image('generated images/train', grid, batch_idx*(self.current_epoch+1), dataformats='CHW')
-
         return g_loss
 
-    # def training_epoch_end(self, outputs):
-    #     print(outputs)
 
     def validation_step(self, batch, batch_idx):
         with torch.no_grad():
@@ -91,23 +67,17 @@ class LitTrainer(pl.LightningModule):
             loss_edge = self.criterion_edge(gen_hr, imgs_hr)
             loss_pixel = self.criterion_pixel(gen_hr, imgs_hr)
             g_loss = 0.3 * loss_edge + 0.7 * loss_pixel
-            self.log('Epoch loss/generator', {'Val': g_loss}, on_step=False, on_epoch=True)
-
-        # if batch_idx % 50 == 0:
-        #     grid = self.make_grid(imgs_lr, imgs_hr, gen_hr)
-        #     self.logger.experiment.add_image('generated images/val', grid, batch_idx*(self.current_epoch+1), dataformats='CHW')
 
         return g_loss
 
     def validation_epoch_end(self, outputs):
         avg_loss = torch.mean(torch.stack(outputs))
-        self.log("val_loss", avg_loss)
+        self.log("val_loss", avg_loss, sync_dist=True)
 
     def prepare_data(self):
         args = self.args
-        data_path = os.path.join(args.root_dir, 'data')
-        train_subjects = data_split('training', patients_frac=self.patients_frac, root_dir=data_path)
-        val_subjects = data_split('validation', patients_frac=self.patients_frac, root_dir=data_path)
+        train_subjects = data_split('training', patients_frac=self.patients_frac, root_dir=args.root_dir)
+        val_subjects = data_split('validation', patients_frac=self.patients_frac, root_dir=args.root_dir)
 
         training_transform = tio.Compose([
             Normalize(std=args.std),
@@ -123,7 +93,7 @@ class LitTrainer(pl.LightningModule):
 
         overlap, nr_patches = calculate_overlap(train_subjects[0]['LR'],
                                                 (self.patch_size, self.patch_size),
-                                                (self.patch_overlap, self.patch_overlap)
+                                                (args.patch_overlap, args.patch_overlap)
                                                 )
         self.samples_per_volume = nr_patches
 
