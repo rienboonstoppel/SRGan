@@ -1,19 +1,13 @@
 #%%
 
-import os
 import torch
 # import numpy as np
-import matplotlib.pyplot as plt
 import torchio as tio
-import torchvision
-from trainer_gan import LitTrainer
-from generator import GeneratorRRDB
-from discriminator import Discriminator
-from feature_extractor import FeatureExtractor
+from archive.trainer_gan import LitTrainer
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
 
-from dataset_tio import ImagePair, data_split, Normalize, calculate_overlap
+from dataset_tio import data_split, Normalize, calculate_overlap
 
 train_subjects = data_split('training')
 val_subjects = data_split('validation')

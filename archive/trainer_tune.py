@@ -18,8 +18,7 @@ class LitTrainer(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = parent_parser.add_argument_group('LitModel')
-        # parser.add_argument('--learning_rate', type=float, default=1e-2)
-        parser.add_argument('--std', type=float, default=-.3548)
+        # parser.add_argument('--std', type=float, default=-.3548)
         return parent_parser
 
     def __init__(self,
@@ -75,9 +74,9 @@ class LitTrainer(pl.LightningModule):
         self.log('Epoch loss/generator', {'Train': g_loss,
                                           }, on_step=False, on_epoch=True)
 
-        # if batch_idx % 100 == 0:
-        #     grid = self.make_grid(imgs_lr, imgs_hr, self.gen_hr)
-        #     self.logger.experiment.add_image('generated images/train', grid, batch_idx*(self.current_epoch+1), dataformats='CHW')
+        if batch_idx % 100 == 0:
+            grid = self.make_grid(imgs_lr, imgs_hr, self.gen_hr)
+            self.logger.experiment.add_image('generated images/train', grid, batch_idx*(self.current_epoch+1), dataformats='CHW')
 
         return g_loss
 
@@ -93,9 +92,9 @@ class LitTrainer(pl.LightningModule):
             g_loss = 0.3 * loss_edge + 0.7 * loss_pixel
             self.log('Epoch loss/generator', {'Val': g_loss}, on_step=False, on_epoch=True)
 
-        # if batch_idx % 50 == 0:
-        #     grid = self.make_grid(imgs_lr, imgs_hr, gen_hr)
-        #     self.logger.experiment.add_image('generated images/val', grid, batch_idx*(self.current_epoch+1), dataformats='CHW')
+        if batch_idx % 50 == 0:
+            grid = self.make_grid(imgs_lr, imgs_hr, gen_hr)
+            self.logger.experiment.add_image('generated images/val', grid, batch_idx*(self.current_epoch+1), dataformats='CHW')
 
         return g_loss
 
@@ -105,7 +104,7 @@ class LitTrainer(pl.LightningModule):
 
     def prepare_data(self):
         args = self.args
-        data_path = os.path.join(args.root_dir, 'data')
+        data_path = os.path.join(args.root_dir, '../data')
         train_subjects = data_split('training', patients_frac=self.patients_frac, root_dir=data_path)
         val_subjects = data_split('validation', patients_frac=self.patients_frac, root_dir=data_path)
 
