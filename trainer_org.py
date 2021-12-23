@@ -8,7 +8,7 @@ from edgeloss import edge_loss1
 import torchio as tio
 import pytorch_lightning as pl
 from lightning_losses import GANLoss
-from edgeloss import edge_loss2
+from edgeloss import edge_loss1, edge_loss2, edge_loss3
 import argparse
 from dataset_tio import data_split, Normalize, calculate_overlap
 
@@ -24,34 +24,42 @@ class LitTrainer(pl.LightningModule):
 
     def __init__(self,
                  netG,
+                 netF,
+                 netD,
                  config,
                  args,
                  **kwargs
                  ):
         super().__init__()
-        self.save_hyperparameters(ignore=['netG'])
+        self.save_hyperparameters(ignore=['netG', 'netF', 'netD'])
 
-        self.learning_rate = config['learning_rate']
         self.patients_frac = config['patients_frac']
         self.patch_overlap = config['patch_overlap']
         self.batch_size = config['batch_size']
         self.patch_size = config['patch_size']
 
+        if config['optimizer'] == 'sgd':
+            self.optimizer = torch.optim.SGD(netG.parameters(), lr=config['learning_rate'], momentum=0.9,
+                                             nesterov=True)
+        elif config['optimizer'] == 'adam':
+            self.optimizer = torch.optim.Adam(netG.parameters(), lr=config['learning_rate'], betas=(0.5, 0.999,))
+
+        if config['edge_loss'] == 1:
+            self.criterion_edge = edge_loss1
+        elif config['edge_loss'] == 2:
+            self.criterion_edge = edge_loss2
+        elif config['edge_loss'] == 3:
+            self.criterion_edge = edge_loss3
+
         self.netG = netG
+        self.netF = netF.eval()
+        self.netD = netD
+
         self.args = args
-        self.criterion_edge = edge_loss2
+
         self.criterion_pixel = torch.nn.L1Loss()
-
-    def make_grid(self, imgs_lr, imgs_hr, gen_hr):
-        imgs_lr = torch.clamp((imgs_lr[:10]*self.args.std), 0, 1).squeeze()
-        imgs_hr = torch.clamp((imgs_hr[:10]*self.args.std), 0, 1).squeeze()
-        gen_hr = torch.clamp((gen_hr[:10]*self.args.std), 0, 1).squeeze()
-        diff = (imgs_hr-gen_hr)*2 + .5
-
-        img_grid = torch.cat([torch.stack([a, b, c, d]) for a, b, c, d in zip(imgs_lr, imgs_hr, gen_hr, diff)]).unsqueeze(1)
-
-        tb_grid = torchvision.utils.make_grid(img_grid, nrow=4)
-        return tb_grid
+        self.criterion_content = torch.nn.L1Loss()
+        self.criterion_GAN = GANLoss("vanilla")
 
     def forward(self, inputs):
         return self.netG(inputs)
@@ -59,31 +67,50 @@ class LitTrainer(pl.LightningModule):
     def prepare_batch(self, batch):
         return batch['LR'][tio.DATA].squeeze(4), batch['HR'][tio.DATA].squeeze(4)
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch, batch_idx, optimizer_idx):
         imgs_lr, imgs_hr = self.prepare_batch(batch)
 
         # train generator
-        self.gen_hr = self(imgs_lr)
+        if optimizer_idx == 0:
+            self.gen_hr = self(imgs_lr)
 
-        loss_edge = self.criterion_edge(self.gen_hr, imgs_hr)
-        loss_pixel = self.criterion_pixel(self.gen_hr, imgs_hr)
-        g_loss = 0.3 * loss_edge + 0.7 * loss_pixel
+            loss_edge = self.criterion_edge(self.gen_hr, imgs_hr)
+            loss_pixel = self.criterion_pixel(self.gen_hr, imgs_hr)
 
-        self.log('Step loss/generator', {'train_loss_edge': loss_edge,
-                                         'train_loss_pixel': loss_pixel,
-                                         }, on_step=True, on_epoch=False, sync_dist=True)
+            gen_features = self.netF(torch.repeat_interleave(self.gen_hr, 3, 1))
+            real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1))  #.detach()
+            loss_content = self.criterion_content(gen_features, real_features)
 
-        self.log('Epoch loss/generator', {'Train': g_loss,
-                                          }, on_step=False, on_epoch=True, sync_dist=True)
+            loss_adv = self.criterion_GAN(self.netD(self.gen_hr), True)
 
-        if batch_idx % 100 == 0:
-            grid = self.make_grid(imgs_lr, imgs_hr, self.gen_hr)
-            self.logger.experiment.add_image('generated images/train', grid, batch_idx*(self.current_epoch+1), dataformats='CHW')
 
-        return g_loss
+            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + loss_content + loss_adv
 
-    # def training_epoch_end(self, outputs):
-    #     print(outputs)
+            self.log('Step loss/generator', {'train_loss_edge': loss_edge,
+                                             'train_loss_pixel': loss_pixel,
+                                             }, on_step=True, on_epoch=False, sync_dist=True)
+
+            self.log('Epoch loss/generator', {'Train': g_loss,
+                                              }, on_step=False, on_epoch=True, sync_dist=True)
+
+            return g_loss
+
+        # train discriminator
+        if optimizer_idx == 1:
+
+            # for real image
+            pred_real = self.netD(imgs_hr)
+            real_loss = self.criterion_GAN(pred_real, True)
+            # for fake image
+            pred_fake = self.netD(self.gen_hr.detach())
+            fake_loss = self.criterion_GAN(pred_fake, False)
+
+            d_loss = (real_loss + fake_loss) / 2
+
+            self.log('Epoch loss/discriminator', {"Train": d_loss}, on_step=False, on_epoch=True, sync_dist=True)
+
+            return d_loss
+
 
     def validation_step(self, batch, batch_idx):
         with torch.no_grad():
@@ -91,12 +118,24 @@ class LitTrainer(pl.LightningModule):
             gen_hr = self(imgs_lr)
             loss_edge = self.criterion_edge(gen_hr, imgs_hr)
             loss_pixel = self.criterion_pixel(gen_hr, imgs_hr)
-            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel
-            self.log('Epoch loss/generator', {'Val': g_loss}, on_step=False, on_epoch=True, sync_dist=True)
+            loss_adv = self.criterion_GAN(self.netD(gen_hr), True)
 
-        if batch_idx % 50 == 0:
-            grid = self.make_grid(imgs_lr, imgs_hr, gen_hr)
-            self.logger.experiment.add_image('generated images/val', grid, batch_idx*(self.current_epoch+1), dataformats='CHW')
+            gen_features = self.netF(torch.repeat_interleave(gen_hr, 3, 1))
+            real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1))  #.detach()
+            loss_content = self.criterion_content(gen_features, real_features)
+
+            # for real image
+            pred_real = self.netD(imgs_hr)
+            real_loss = self.criterion_GAN(pred_real, True)
+            # for fake image
+            pred_fake = self.netD(gen_hr.detach())
+            fake_loss = self.criterion_GAN(pred_fake, False)
+
+            d_loss = (real_loss + fake_loss) / 2
+
+            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + loss_adv + loss_content
+            self.log('Epoch loss/generator', {'Val': g_loss}, on_step=False, on_epoch=True, sync_dist=True)
+            self.log('Epoch loss/discriminator', {"Val": d_loss}, on_step=False, on_epoch=True, sync_dist=True)
 
         return g_loss
 
@@ -136,7 +175,7 @@ class LitTrainer(pl.LightningModule):
     def train_dataloader(self):
         training_queue = tio.Queue(
             subjects_dataset=self.training_set,
-            max_length=self.samples_per_volume*100,
+            max_length=self.samples_per_volume * 100,
             samples_per_volume=self.samples_per_volume,
             sampler=self.sampler,
             num_workers=self.args.num_workers,
@@ -152,7 +191,7 @@ class LitTrainer(pl.LightningModule):
     def val_dataloader(self):
         val_queue = tio.Queue(
             subjects_dataset=self.val_set,
-            max_length=self.samples_per_volume*100,
+            max_length=self.samples_per_volume * 100,
             samples_per_volume=self.samples_per_volume,
             sampler=self.sampler,
             num_workers=self.args.num_workers,
@@ -165,13 +204,18 @@ class LitTrainer(pl.LightningModule):
         )
         return val_loader
 
-    def configure_optimizers(self):
-        lr = self.learning_rate
-        opt_g = torch.optim.SGD(self.netG.parameters(), lr=lr, momentum=0.9, nesterov=True)
-        return {
-            'optimizer': opt_g,
-            'lr_scheduler': {
-                'scheduler': torch.optim.lr_scheduler.ExponentialLR(opt_g, gamma=0.99999),
-            },
-        }
+    # def configure_optimizers(self):
+    #     return {
+    #         'optimizer': self.optimizer,
+    #         'lr_scheduler': {
+    #             'scheduler': torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.99999),
+    #         },
+    #     }
 
+    def configure_optimizers(self):
+        lr = 0.01
+        b1 = 0.5
+        b2 = 0.999
+        opt_g = torch.optim.Adam(self.netG.parameters(), lr=lr, betas=(b1, b2))
+        opt_d = torch.optim.Adam(self.netD.parameters(), lr=lr, betas=(b1, b2))
+        return [opt_g, opt_d], []

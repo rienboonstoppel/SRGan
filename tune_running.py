@@ -2,7 +2,7 @@ import os
 import torch
 import numpy as np
 import torchio as tio
-from trainer_org import LitTrainer
+from trainer_org_running import LitTrainer
 from generator import GeneratorRRDB
 from discriminator import Discriminator
 from feature_extractor import FeatureExtractor
@@ -14,7 +14,6 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
 from ray import tune
 from ray.tune import CLIReporter
-from datetime import timedelta
 
 # print(os.getcwd())
 # torch.cuda.empty_cache()
@@ -22,33 +21,22 @@ from datetime import timedelta
 
 def train_tune(config, args):
     generator = GeneratorRRDB(channels=1, filters=64, num_res_blocks=1)
-    discriminator = Discriminator(input_shape=(1, config['patch_size'], config['patch_size']))
-    feature_extractor = FeatureExtractor()
+    # discriminator = Discriminator(input_shape=(1, 64, 64))
+    # feature_extractor = FeatureExtractor().to(device)
 
     log_path = tune.get_trial_dir()
+
     logger = TensorBoardLogger(save_dir=log_path, name="", version=".")
-
     lr_monitor = LearningRateMonitor(logging_interval='step')
-
-    ckpt_path = os.path.join(args.root_dir, 'ray_results', args.name, 'checkpoints')
-    os.makedirs(ckpt_path, exist_ok=True)
-    ckpt_filename = 'checkpoint_{}_{}_{}'.format(config['patch_size'], config['batch_size'], config['patients_frac'])
-
-    checkpoint_callback_best = ModelCheckpoint(
+    checkpoint_callback = ModelCheckpoint(
         monitor="val_loss",
-        dirpath=ckpt_path,
-        filename=ckpt_filename+"-best",
-        save_top_k=1,
+        dirpath=os.path.join(log_path, 'checkpoints'),
+        filename=args.name+"-checkpoint-{epoch:002d}-{val_loss:.4f}",
+        save_top_k=3,
         mode="min",
     )
 
-    checkpoint_callback_time = ModelCheckpoint(
-        dirpath=os.path.join(log_path, 'checkpoints'),
-        filename=ckpt_filename+"-{epoch:002d}",
-        train_time_interval=timedelta(hours=1),
-    )
-
-    model = LitTrainer(netG=generator, netF=feature_extractor, netD=discriminator, args=args, config=config)
+    model = LitTrainer(netG=generator, args=args, config=config)
 
     trainer = pl.Trainer(
         gpus=1,
@@ -61,8 +49,7 @@ def train_tune(config, args):
         enable_progress_bar=False,
         callbacks=[
             lr_monitor,
-            checkpoint_callback_best,
-            checkpoint_callback_time,
+            checkpoint_callback,
             TuneReportCallback(
                 metrics={'loss': 'val_loss'},
                 on="validation_end"),
@@ -99,16 +86,14 @@ def main():
 
     ### Gridsearch ###
     config = {
-        'learning_rate': tune.grid_search([1e-4, 1e-3, 1e-2]),
-        'patch_size': tune.grid_search([64, 224]),
-        'batch_size': tune.sample_from(lambda spec: 256 if (spec.config.patch_size == 64) else 16),
-        'patients_frac': tune.grid_search([0.1, 0.5, 1.0]),
+        'learning_rate': tune.grid_search([1e-10, 1e-2]),
+        'patch_size': 224,
+        'batch_size': 16,
+        'patients_frac': 0.5,
         'patch_overlap': 0.5,
-        'optimizer': tune.grid_search(['adam', 'sgd']),
-        'edge_loss': tune.grid_search([1, 2, 3]),
     }
     reporter = CLIReporter(
-        parameter_columns=['learning_rate', 'patch_size', 'batch_size', 'patients_frac', 'optimizer', 'edge_loss'],
+        parameter_columns=["learning_rate", "patch_size", 'batch_size', 'patients_frac', 'patch_overlap'],
         metric_columns=["loss", "training_iteration"])
 
     resources_per_trial = {'cpu': 8, 'gpu': 1}
