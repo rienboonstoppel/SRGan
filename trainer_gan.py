@@ -24,6 +24,8 @@ class LitTrainer(pl.LightningModule):
 
     def __init__(self,
                  netG,
+                 netF,
+                 netD,
                  config,
                  args,
                  **kwargs
@@ -50,10 +52,17 @@ class LitTrainer(pl.LightningModule):
             self.criterion_edge = edge_loss3
 
         self.netG = netG
+        self.netF = netF.eval()
+        self.netD = netD
 
         self.args = args
 
         self.criterion_pixel = torch.nn.L1Loss()
+        self.criterion_content = torch.nn.L1Loss()
+        self.criterion_GAN = GANLoss("vanilla")
+
+        self.factor_content = config['content_alpha']
+        self.factor_adversarial = config['adversarial_alpha']
 
     def forward(self, inputs):
         return self.netG(inputs)
@@ -61,24 +70,47 @@ class LitTrainer(pl.LightningModule):
     def prepare_batch(self, batch):
         return batch['LR'][tio.DATA].squeeze(4), batch['HR'][tio.DATA].squeeze(4)
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch, batch_idx, optimizer_idx):
         imgs_lr, imgs_hr = self.prepare_batch(batch)
 
-        self.gen_hr = self(imgs_lr)
+        # train generator
+        if optimizer_idx == 0:
+            self.gen_hr = self(imgs_lr)
 
-        loss_edge = self.criterion_edge(self.gen_hr, imgs_hr)
-        loss_pixel = self.criterion_pixel(self.gen_hr, imgs_hr)
+            loss_edge = self.criterion_edge(self.gen_hr, imgs_hr)
+            loss_pixel = self.criterion_pixel(self.gen_hr, imgs_hr)
 
-        g_loss = 0.3 * loss_edge + 0.7 * loss_pixel
+            gen_features = self.netF(torch.repeat_interleave(self.gen_hr, 3, 1))
+            real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1))  #.detach()
+            loss_content = self.criterion_content(gen_features, real_features)
 
-        self.log('Step loss/generator', {'train_loss_edge': loss_edge,
-                                         'train_loss_pixel': loss_pixel,
-                                         }, on_step=True, on_epoch=False, sync_dist=True)
+            loss_adv = self.criterion_GAN(self.netD(self.gen_hr), True)
 
-        self.log('Epoch loss/generator', {'Train': g_loss,
-                                          }, on_step=False, on_epoch=True, sync_dist=True)
+            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.factor_content * loss_content + self.factor_adversarial * loss_adv
 
-        return g_loss
+            self.log('Step loss/generator', {'train_loss_edge': loss_edge,
+                                             'train_loss_pixel': loss_pixel,
+                                             }, on_step=True, on_epoch=False, sync_dist=True)
+
+            self.log('Epoch loss/generator', {'Train': g_loss,
+                                              }, on_step=False, on_epoch=True, sync_dist=True)
+
+            return g_loss
+
+        # train discriminator
+        if optimizer_idx == 1:
+            # for real image
+            pred_real = self.netD(imgs_hr)
+            real_loss = self.criterion_GAN(pred_real, True)
+            # for fake image
+            pred_fake = self.netD(self.gen_hr.detach())
+            fake_loss = self.criterion_GAN(pred_fake, False)
+
+            d_loss = (real_loss + fake_loss) / 2
+
+            self.log('Epoch loss/discriminator', {"Train": d_loss}, on_step=False, on_epoch=True, sync_dist=True)
+
+            return d_loss
 
     def validation_step(self, batch, batch_idx):
         with torch.no_grad():
@@ -86,9 +118,24 @@ class LitTrainer(pl.LightningModule):
             gen_hr = self(imgs_lr)
             loss_edge = self.criterion_edge(gen_hr, imgs_hr)
             loss_pixel = self.criterion_pixel(gen_hr, imgs_hr)
+            loss_adv = self.criterion_GAN(self.netD(gen_hr), True)
 
-            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel
+            gen_features = self.netF(torch.repeat_interleave(gen_hr, 3, 1))
+            real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1))  # .detach()
+            loss_content = self.criterion_content(gen_features, real_features)
+
+            # for real image
+            pred_real = self.netD(imgs_hr)
+            real_loss = self.criterion_GAN(pred_real, True)
+            # for fake image
+            pred_fake = self.netD(gen_hr.detach())
+            fake_loss = self.criterion_GAN(pred_fake, False)
+
+            d_loss = (real_loss + fake_loss) / 2
+
+            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.factor_content * loss_content + self.factor_adversarial * loss_adv
             self.log('Epoch loss/generator', {'Val': g_loss}, on_step=False, on_epoch=True, sync_dist=True)
+            self.log('Epoch loss/discriminator', {"Val": d_loss}, on_step=False, on_epoch=True, sync_dist=True)
 
         return g_loss
 
@@ -158,9 +205,23 @@ class LitTrainer(pl.LightningModule):
         return val_loader
 
     def configure_optimizers(self):
-        return {
-            'optimizer': self.optimizer,
-            'lr_scheduler': {
-                'scheduler': torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.99999),
+        opt_g = self.optimizer
+        opt_d = self.optimizer
+        lr_scheduler = torch.optim.lr_scheduler.ExponentialLR
+
+        return (
+            {
+                'optimizer': opt_g,
+                'lr_scheduler':
+                    {
+                        'scheduler': lr_scheduler(self.optimizer, gamma=0.99999),
+                    },
             },
-        }
+            {
+                'optimizer': opt_d,
+                'lr_scheduler':
+                    {
+                        'scheduler': lr_scheduler(self.optimizer, gamma=0.99999),
+                    },
+            }
+        )

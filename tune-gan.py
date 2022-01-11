@@ -2,8 +2,10 @@ import os
 import torch
 import numpy as np
 import torchio as tio
-from trainer_org import LitTrainer
+from trainer_gan import LitTrainer
 from generator import GeneratorRRDB
+from discriminator import Discriminator
+from feature_extractor import FeatureExtractor
 import pytorch_lightning as pl
 from argparse import ArgumentParser
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -21,6 +23,8 @@ from datetime import timedelta
 
 def train_tune(config, args):
     generator = GeneratorRRDB(channels=1, filters=64, num_res_blocks=1)
+    discriminator = Discriminator(input_shape=(1, config['patch_size'], config['patch_size']))
+    feature_extractor = FeatureExtractor()
 
     log_path = tune.get_trial_dir()
     logger = TensorBoardLogger(save_dir=log_path, name="", version=".")
@@ -35,8 +39,8 @@ def train_tune(config, args):
                                                           config['edge_loss'],
                                                           config['optimizer'],
                                                           config['learning_rate'],
-                                                          config['b1'],
-                                                          config['b2']
+                                                          config['content'],
+                                                          config['adversarial']
                                                           )
 
     checkpoint_callback_best = ModelCheckpoint(
@@ -53,7 +57,7 @@ def train_tune(config, args):
         train_time_interval=timedelta(hours=1),
     )
 
-    model = LitTrainer(netG=generator, args=args, config=config)
+    model = LitTrainer(netG=generator, netF=feature_extractor, netD=discriminator, args=args, config=config)
 
     trainer = pl.Trainer(
         gpus=1,
@@ -93,20 +97,32 @@ def main():
     parser = LitTrainer.add_model_specific_args(parser)
     args = parser.parse_args()
 
+    # ### Single config ###
+    # config = {
+    #     'learning_rate': 0.01,
+    #     'patch_size': 64,
+    #     'batch_size': 256,
+    #     'patients_frac': 0.5,
+    #     'patch_overlap': 0.5,
+    # }
+
+    ### Gridsearch ###
     config = {
-        'learning_rate': tune.grid_search([1e-4, 1e-5]),
         'patch_size': 224,
-        'batch_size': 16,
+        'batch_size': tune.sample_from(lambda spec: 256 if (spec.config.patch_size == 64) else 16),
         'patients_frac': 0.5,
         'patch_overlap': 0.5,
+        'learning_rate': 1e-4,
         'optimizer': 'adam',
+        'b1': 0.9,
+        'b2': 0.5,
         'edge_loss': 2,
-        'b1': tune.grid_search([0, 0.5, 0.9]),
-        'b2': tune.grid_search([0, 0.5, 0.9, 0.999]),
+        'content_alpha': tune.grid_search([0, 0.1, 1]),
+        'adversarial_alpha': tune.grid_search([0, 0.1, 1]),
     }
 
     reporter = CLIReporter(
-        parameter_columns=['learning_rate', 'patch_size', 'batch_size', 'patients_frac', 'optimizer', 'edge_loss', 'b1', 'b2'],
+        parameter_columns=['learning_rate', 'patch_size', 'batch_size', 'patients_frac', 'optimizer', 'edge_loss', 'content', 'adversarial'],
         metric_columns=["loss", "training_iteration"])
 
     resources_per_trial = {'cpu': 8, 'gpu': 1}

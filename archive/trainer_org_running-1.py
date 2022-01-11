@@ -106,7 +106,7 @@ class LitTrainer(pl.LightningModule):
 
     def prepare_data(self):
         args = self.args
-        data_path = os.path.join(args.root_dir, 'data')
+        data_path = os.path.join(args.root_dir, '../data')
         train_subjects = data_split('training', patients_frac=self.patients_frac, root_dir=data_path)
         val_subjects = data_split('validation', patients_frac=self.patients_frac, root_dir=data_path)
 

@@ -2,8 +2,10 @@ import os
 import torch
 import numpy as np
 import torchio as tio
-from trainer_org import LitTrainer
+from trainer_gan import LitTrainer
 from generator import GeneratorRRDB
+from discriminator import Discriminator
+from feature_extractor import FeatureExtractor
 import pytorch_lightning as pl
 from argparse import ArgumentParser
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -28,18 +30,22 @@ def main():
 
     ### Single config ###
     config = {
-        'learning_rate': 1e-4,
         'patch_size': 224,
         'batch_size': 16,
         'patients_frac': 0.5,
         'patch_overlap': 0.5,
         'optimizer': 'adam',
-        'edge_loss': 2,
+        'learning_rate': 1e-4,
         'b1': 0.9,
         'b2': 0.5,
+        'edge_loss': 2,
+        'content_alpha': 0.1,
+        'adversarial_alpha': 0.1,
     }
 
     generator = GeneratorRRDB(channels=1, filters=64, num_res_blocks=1)
+    discriminator = Discriminator(input_shape=(1, config['patch_size'], config['patch_size']))
+    feature_extractor = FeatureExtractor()
 
     os.makedirs(os.path.join(args.root_dir, 'log', args.name), exist_ok=True)
     logger = TensorBoardLogger('log', name=args.name, default_hp_metric=False)
@@ -52,7 +58,7 @@ def main():
         mode="min",
     )
 
-    model = LitTrainer(netG=generator, args=args, config=config)
+    model = LitTrainer(netG=generator, netF=feature_extractor, netD=discriminator, args=args, config=config)
 
     trainer = pl.Trainer(
         gpus=args.gpus,
