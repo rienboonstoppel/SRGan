@@ -15,7 +15,7 @@ from torchio.transforms.intensity_transform import IntensityTransform
 def perc_norm(img3d, perc=(1,99)):
     min_val, max_val = np.percentile(img3d, perc)
     img_norm = ((img3d.astype(float) - min_val) / (max_val - min_val)).astype(np.float32)
-    return img_norm
+    return img_norm, (min_val, max_val)
 
 
 def slice_middle(img, numslices):
@@ -25,18 +25,25 @@ def slice_middle(img, numslices):
 
 
 class ImagePair(object):
-    def __init__(self, number, root_dir='data', select_slices=50):
+    def __init__(self, number, root_dir='data', select_slices=50, simulated=True):
         self._number = number
         self.select_slices = select_slices
-        self.path = root_dir + "/brain_simulated_t1w_mri"
-        self.img_fname = "23-Aug-2021_Ernst_labels_{:06d}_" \
-                         "3T_T1w_MPR1_img_act_1_contrast_1".format(self._number)
+        self.simulated = simulated
+        if simulated:
+            self.path = root_dir + "/brain_simulated_t1w_mri"
+            self.img_fname = "23-Aug-2021_Ernst_labels_{:06d}_" \
+                             "3T_T1w_MPR1_img_act_1_contrast_1".format(self._number)
+        else:
+            self.path = root_dir + "/brain_real_t1w_mri"
+            self.img_fname = "p{:01d}_reg_T1".format(self._number)
 
     def LR_HR_fnames(self):
-        LR_suff = "_Res_2_2_2_img.nii.gz"
-        LRf = path.join(self.path, 'LR', self.img_fname + LR_suff)
-        HR_suff = "_Res_1_1_2_img.nii.gz"
-        HRf = path.join(self.path, 'HR', self.img_fname + HR_suff)
+        if self.simulated:
+            LRf = path.join(self.path, 'LR', self.img_fname + "_Res_2_2_2_img.nii.gz")
+            HRf = path.join(self.path, 'HR', self.img_fname + "_Res_1_1_2_img.nii.gz")
+        else:
+            LRf = path.join(self.path, 'LR', self.img_fname + ".nii.gz")
+            HRf = path.join(self.path, 'GT', self.img_fname + ".nii.gz")
         return LRf, HRf
 
     def to_nifty(self):
@@ -54,8 +61,8 @@ class ImagePair(object):
             LR = self.LR.get_fdata()
             HR = self.LR.get_fdata()
 
-        LR_norm = perc_norm(LR)
-        HR_norm = perc_norm(HR)
+        LR_norm, self.scaling_LR = perc_norm(LR)
+        HR_norm, self.scaling_HR = perc_norm(HR)
 
         subject = tio.Subject(
             LR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(LR_norm,0))),
@@ -66,14 +73,14 @@ class ImagePair(object):
     def info(self):
         self.to_nifty()
         img_info = {
-            'LR': self.LR.header,
-            'HR': self.HR.header
+            'LR': (self.LR.header, self.scaling_LR),
+            'HR': (self.HR.header, self.scaling_HR),
         }
         return img_info
 
 
 def data_split(dataset, patients_frac=1, train_frac=0.7, val_frac=.15, test_frac=.15, numslices=50, root_dir='data',
-               randomseed=7886462529168327085):
+               randomseed=21011998, simulated=True):
     # define paths
     random.seed(randomseed)
     path   = root_dir + "/brain_simulated_t1w_mri/HR/"
@@ -99,7 +106,22 @@ def data_split(dataset, patients_frac=1, train_frac=0.7, val_frac=.15, test_frac
     # for num in tqdm(ids_split, desc='Load {} set\t'.format(dataset), bar_format='{l_bar}{bar:15}{r_bar}{bar:-15b}',
     #                 leave=True, position=0):
     for num in ids_split:
-        data = ImagePair(num, root_dir=root_dir, select_slices=numslices)
+        data = ImagePair(num, root_dir=root_dir, select_slices=numslices, simulated=simulated)
+        subjects.append(data.subject())
+    return subjects
+
+
+def real_data(numslices=45, root_dir='data', simulated=False):
+    path   = root_dir + "/brain_real_t1w_mri/GT/"
+    fnames = glob(path + "*.nii.gz")
+    ids    = sorted(list(map(int, [(fnames[i][-15:-14]) for i in range(len(fnames))])))
+
+    # make arrays
+    subjects = []
+    print('Loading real dataset...')
+
+    for num in ids:
+        data = ImagePair(num, root_dir=root_dir, select_slices=numslices, simulated=simulated)
         subjects.append(data.subject())
     return subjects
 

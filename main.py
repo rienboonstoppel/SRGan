@@ -29,8 +29,8 @@ def main():
     ### Single config ###
     config = {
         'learning_rate': 1e-4,
-        'patch_size': 224,
-        'batch_size': 16,
+        'patch_size': 64,
+        'batch_size': 256,
         'patients_frac': 0.5,
         'patch_overlap': 0.5,
         'optimizer': 'adam',

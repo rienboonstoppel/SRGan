@@ -59,10 +59,21 @@ class LitTrainer(pl.LightningModule):
 
         self.criterion_pixel = torch.nn.L1Loss()
         self.criterion_content = torch.nn.L1Loss()
-        self.criterion_GAN = GANLoss("vanilla")
+        self.criterion_GAN = GANLoss("wgangp")
 
         self.factor_content = config['content_alpha']
         self.factor_adversarial = config['adversarial_alpha']
+
+    def make_grid(self, imgs_lr, imgs_hr, gen_hr):
+        imgs_lr = torch.clamp((imgs_lr[:10]*self.args.std), 0, 1).squeeze()
+        imgs_hr = torch.clamp((imgs_hr[:10]*self.args.std), 0, 1).squeeze()
+        gen_hr = torch.clamp((gen_hr[:10]*self.args.std), 0, 1).squeeze()
+        diff = (imgs_hr-gen_hr)*2 + .5
+
+        img_grid = torch.cat([torch.stack([a, b, c, d]) for a, b, c, d in zip(imgs_lr, imgs_hr, gen_hr, diff)]).unsqueeze(1)
+
+        tb_grid = torchvision.utils.make_grid(img_grid, nrow=4)
+        return tb_grid
 
     def forward(self, inputs):
         return self.netG(inputs)
@@ -77,23 +88,33 @@ class LitTrainer(pl.LightningModule):
         if optimizer_idx == 0:
             self.gen_hr = self(imgs_lr)
 
-            loss_edge = self.criterion_edge(self.gen_hr, imgs_hr)
-            loss_pixel = self.criterion_pixel(self.gen_hr, imgs_hr)
+            # loss_edge = self.criterion_edge(self.gen_hr, imgs_hr)
+            # loss_pixel = self.criterion_pixel(self.gen_hr, imgs_hr)
 
-            gen_features = self.netF(torch.repeat_interleave(self.gen_hr, 3, 1))
-            real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1))  #.detach()
-            loss_content = self.criterion_content(gen_features, real_features)
+            # gen_features = self.netF(torch.repeat_interleave(self.gen_hr, 3, 1))
+            # real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1))  #.detach()
+            # loss_content = self.criterion_content(gen_features, real_features)
 
             loss_adv = self.criterion_GAN(self.netD(self.gen_hr), True)
 
-            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.factor_content * loss_content + self.factor_adversarial * loss_adv
+            # g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.factor_content * loss_content + self.factor_adversarial * loss_adv
 
-            self.log('Step loss/generator', {'train_loss_edge': loss_edge,
-                                             'train_loss_pixel': loss_pixel,
-                                             }, on_step=True, on_epoch=False, sync_dist=True)
+            if self.current_epoch < 5:
+                g_loss = self.criterion_pixel(self.gen_hr, imgs_hr)
+            else:
+                g_loss = loss_adv
+
+            # self.log('Step loss/generator', {'train_loss_edge': loss_edge,
+            #                                  'train_loss_pixel': loss_pixel,
+            #                                  }, on_step=True, on_epoch=False, sync_dist=True)
 
             self.log('Epoch loss/generator', {'Train': g_loss,
                                               }, on_step=False, on_epoch=True, sync_dist=True)
+
+            if batch_idx % 20 == 0:
+                grid = self.make_grid(imgs_lr, imgs_hr, self.gen_hr)
+                self.logger.experiment.add_image('generated images/train', grid, batch_idx * (self.current_epoch + 1),
+                                                 dataformats='CHW')
 
             return g_loss
 
@@ -116,13 +137,13 @@ class LitTrainer(pl.LightningModule):
         with torch.no_grad():
             imgs_lr, imgs_hr = self.prepare_batch(batch)
             gen_hr = self(imgs_lr)
-            loss_edge = self.criterion_edge(gen_hr, imgs_hr)
-            loss_pixel = self.criterion_pixel(gen_hr, imgs_hr)
+            # loss_edge = self.criterion_edge(gen_hr, imgs_hr)
+            # loss_pixel = self.criterion_pixel(gen_hr, imgs_hr)
             loss_adv = self.criterion_GAN(self.netD(gen_hr), True)
 
-            gen_features = self.netF(torch.repeat_interleave(gen_hr, 3, 1))
-            real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1))  # .detach()
-            loss_content = self.criterion_content(gen_features, real_features)
+            # gen_features = self.netF(torch.repeat_interleave(gen_hr, 3, 1))
+            # real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1))  # .detach()
+            # loss_content = self.criterion_content(gen_features, real_features)
 
             # for real image
             pred_real = self.netD(imgs_hr)
@@ -133,9 +154,14 @@ class LitTrainer(pl.LightningModule):
 
             d_loss = (real_loss + fake_loss) / 2
 
-            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.factor_content * loss_content + self.factor_adversarial * loss_adv
+            # g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.factor_content * loss_content + self.factor_adversarial * loss_adv
+            g_loss = loss_adv
             self.log('Epoch loss/generator', {'Val': g_loss}, on_step=False, on_epoch=True, sync_dist=True)
             self.log('Epoch loss/discriminator', {"Val": d_loss}, on_step=False, on_epoch=True, sync_dist=True)
+
+        if batch_idx % 5 == 0:
+            grid = self.make_grid(imgs_lr, imgs_hr, gen_hr)
+            self.logger.experiment.add_image('generated images/val', grid, batch_idx*(self.current_epoch+1), dataformats='CHW')
 
         return g_loss
 
