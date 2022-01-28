@@ -12,10 +12,10 @@ from torchio.data.subject import Subject
 from torchio.transforms.intensity_transform import IntensityTransform
 
 
-def perc_norm(img3d, perc=(1,99)):
-    min_val, max_val = np.percentile(img3d, perc)
-    img_norm = ((img3d.astype(float) - min_val) / (max_val - min_val)).astype(np.float32)
-    return img_norm, (min_val, max_val)
+def perc_norm(img3d, perc=95):
+    max_val = np.percentile(img3d, perc)
+    img_norm = img3d.astype(float)  / max_val.astype(np.float32)
+    return img_norm, max_val
 
 
 def slice_middle(img, numslices):
@@ -73,8 +73,14 @@ class ImagePair(object):
     def info(self):
         self.to_nifty()
         img_info = {
-            'LR': (self.LR.header, self.scaling_LR),
-            'HR': (self.HR.header, self.scaling_HR),
+            'LR': {
+                'header': self.LR.header,
+                'scaling': self.scaling_LR,
+            },
+            'HR': {
+                'header': self.HR.header,
+                'scaling': self.scaling_HR,
+            }
         }
         return img_info
 

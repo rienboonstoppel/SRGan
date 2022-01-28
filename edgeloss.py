@@ -97,5 +97,3 @@ def edge_loss3(out, target):
     tloss = max_diff * torch.mean(g_tot)     # max error * edge_strength
 
     return tloss
-
-# ... more code here

@@ -24,6 +24,7 @@ class LitTrainer(pl.LightningModule):
 
     def __init__(self,
                  netG,
+                 netF,
                  config,
                  args,
                  **kwargs
@@ -50,10 +51,24 @@ class LitTrainer(pl.LightningModule):
             self.criterion_edge = edge_loss3
 
         self.netG = netG
+        self.netF = netF
 
         self.args = args
 
         self.criterion_pixel = torch.nn.L1Loss()
+        self.criterion_content = torch.nn.L1Loss()
+
+
+    def make_grid(self, imgs_lr, imgs_hr, gen_hr):
+        imgs_lr = torch.clamp((imgs_lr[:10]*self.args.std), 0, 1).squeeze()
+        imgs_hr = torch.clamp((imgs_hr[:10]*self.args.std), 0, 1).squeeze()
+        gen_hr = torch.clamp((gen_hr[:10]*self.args.std), 0, 1).squeeze()
+        diff = (imgs_hr-gen_hr)*2 + .5
+
+        img_grid = torch.cat([torch.stack([a, b, c, d]) for a, b, c, d in zip(imgs_lr, imgs_hr, gen_hr, diff)]).unsqueeze(1)
+
+        tb_grid = torchvision.utils.make_grid(img_grid, nrow=4)
+        return tb_grid
 
     def forward(self, inputs):
         return self.netG(inputs)
@@ -64,19 +79,31 @@ class LitTrainer(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         imgs_lr, imgs_hr = self.prepare_batch(batch)
 
+
         self.gen_hr = self(imgs_lr)
 
         loss_edge = self.criterion_edge(self.gen_hr, imgs_hr)
         loss_pixel = self.criterion_pixel(self.gen_hr, imgs_hr)
 
-        g_loss = 0.3 * loss_edge + 0.7 * loss_pixel
+        gen_features = self.netF(torch.repeat_interleave(self.gen_hr, 3, 1))
+        real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1))
+        loss_content = self.criterion_content(gen_features, real_features)
+
+        g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + 0.1 * loss_content
 
         self.log('Step loss/generator', {'train_loss_edge': loss_edge,
                                          'train_loss_pixel': loss_pixel,
+                                         'train_loss_content': loss_content,
                                          }, on_step=True, on_epoch=False, sync_dist=True)
 
         self.log('Epoch loss/generator', {'Train': g_loss,
                                           }, on_step=False, on_epoch=True, sync_dist=True)
+
+        train_batches_done = batch_idx + self.current_epoch * self.train_len
+        if train_batches_done % (self.args.log_every_n_steps*5) == 0:
+            grid = self.make_grid(imgs_lr, imgs_hr, self.gen_hr)
+            self.logger.experiment.add_image('generated images/train', grid, train_batches_done,
+                                             dataformats='CHW')
 
         return g_loss
 
@@ -87,8 +114,18 @@ class LitTrainer(pl.LightningModule):
             loss_edge = self.criterion_edge(gen_hr, imgs_hr)
             loss_pixel = self.criterion_pixel(gen_hr, imgs_hr)
 
-            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel
+            gen_features = self.netF(torch.repeat_interleave(gen_hr, 3, 1))
+            real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1))  # .detach()
+            loss_content = self.criterion_content(gen_features, real_features)
+
+            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + 0.1 * loss_content
             self.log('Epoch loss/generator', {'Val': g_loss}, on_step=False, on_epoch=True, sync_dist=True)
+
+            val_batches_done = batch_idx + self.current_epoch * self.val_len
+            if val_batches_done % self.args.log_every_n_steps == 0:
+                grid = self.make_grid(imgs_lr, imgs_hr, gen_hr)
+                self.logger.experiment.add_image('generated images/val', grid, val_batches_done,
+                                                 dataformats='CHW')
 
         return g_loss
 
@@ -105,7 +142,7 @@ class LitTrainer(pl.LightningModule):
         training_transform = tio.Compose([
             Normalize(std=args.std),
             # tio.RandomNoise(p=0.5),
-            tio.RandomFlip(),
+            tio.RandomFlip(axes=(0,1)),
         ])
 
         self.training_set = tio.SubjectsDataset(
@@ -128,7 +165,7 @@ class LitTrainer(pl.LightningModule):
     def train_dataloader(self):
         training_queue = tio.Queue(
             subjects_dataset=self.training_set,
-            max_length=self.samples_per_volume * 100,
+            max_length=self.samples_per_volume * 10,
             samples_per_volume=self.samples_per_volume,
             sampler=self.sampler,
             num_workers=self.args.num_workers,
@@ -139,12 +176,13 @@ class LitTrainer(pl.LightningModule):
             training_queue,
             batch_size=self.batch_size
         )
+        self.train_len = len(training_loader)
         return training_loader
 
     def val_dataloader(self):
         val_queue = tio.Queue(
             subjects_dataset=self.val_set,
-            max_length=self.samples_per_volume * 100,
+            max_length=self.samples_per_volume * 5,
             samples_per_volume=self.samples_per_volume,
             sampler=self.sampler,
             num_workers=self.args.num_workers,
@@ -155,6 +193,7 @@ class LitTrainer(pl.LightningModule):
             val_queue,
             batch_size=self.batch_size
         )
+        self.val_len = len(val_loader)
         return val_loader
 
     def configure_optimizers(self):
