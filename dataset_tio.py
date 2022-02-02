@@ -131,7 +131,7 @@ def real_data(numslices=45, root_dir='data', simulated=False):
         subjects.append(data.subject())
     return subjects
 
-
+# TODO fix only even overlap
 def calculate_overlap(img, patch_size, ovl_perc):
     patch_size = np.array([patch_size[0], patch_size[1]])
     ovl_perc = np.array([ovl_perc[0], ovl_perc[1]])

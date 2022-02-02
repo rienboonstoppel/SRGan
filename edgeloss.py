@@ -1,29 +1,24 @@
-import numpy as np
 import torch
 from torch import nn
-import warnings
-
-# Get cpu or gpu device for training.
-device = "cuda" if torch.cuda.is_available() else "cpu"
-
-# clear GPU cache
-torch.cuda.empty_cache()
-
-# suppress warnings
-warnings.filterwarnings("ignore")
 
 # edge loss function 1 (mean of sobel in patch)
 def edge_loss1(out, target):
-    
-    x_filter = np.array([[1, 0, -1], [2, 0, -2], [1, 0, -1]])
-    y_filter = np.array([[1, 2, 1], [0, 0, 0], [-1, -2, -1]])
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
     convx = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding='same', padding_mode='replicate', bias=False)
     convy = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding='same', padding_mode='replicate', bias=False)
-    weights_x = torch.from_numpy(x_filter).float().unsqueeze(0).unsqueeze(0)
-    weights_y = torch.from_numpy(y_filter).float().unsqueeze(0).unsqueeze(0)
 
-    weights_x = weights_x.to(device)
-    weights_y = weights_y.to(device)
+    weights_x = torch.tensor(
+        [[[[1, 0, -1], [2, 0, -2], [1, 0, -1]]]],
+        device=device,
+        dtype=torch.float32
+    )
+
+    weights_y = torch.tensor(
+        [[[[1, 2, 1], [0, 0, 0], [-1, -2, -1]]]],
+        device=device,
+        dtype=torch.float32
+    )
 
     convx.weight = nn.Parameter(weights_x)
     convy.weight = nn.Parameter(weights_y)
@@ -46,16 +41,20 @@ def edge_loss1(out, target):
 
 # edge loss function 2 (mean of sobel * abs pixel difference in patch)
 def edge_loss2(out, target):
-
-    x_filter = np.array([[1, 0, -1], [2, 0, -2], [1, 0, -1]])
-    y_filter = np.array([[1, 2, 1], [0, 0, 0], [-1, -2, -1]])
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     convx = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding='same', padding_mode='replicate', bias=False)
     convy = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding='same', padding_mode='replicate', bias=False)
-    weights_x = torch.from_numpy(x_filter).float().unsqueeze(0).unsqueeze(0)
-    weights_y = torch.from_numpy(y_filter).float().unsqueeze(0).unsqueeze(0)
+    weights_x = torch.tensor(
+        [[[[1, 0, -1], [2, 0, -2], [1, 0, -1]]]],
+        device=device,
+        dtype=torch.float32
+    )
 
-    weights_x = weights_x.to(device)
-    weights_y = weights_y.to(device)
+    weights_y = torch.tensor(
+        [[[[1, 2, 1], [0, 0, 0], [-1, -2, -1]]]],
+        device=device,
+        dtype=torch.float32
+    )
 
     convx.weight = nn.Parameter(weights_x)
     convy.weight = nn.Parameter(weights_y)
@@ -73,16 +72,20 @@ def edge_loss2(out, target):
 
 # edge loss function 2 (max difference * mean sobel in patch)
 def edge_loss3(out, target):
-
-    x_filter = np.array([[1, 0, -1], [2, 0, -2], [1, 0, -1]])
-    y_filter = np.array([[1, 2, 1], [0, 0, 0], [-1, -2, -1]])
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     convx = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding='same', padding_mode='replicate', bias=False)
     convy = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding='same', padding_mode='replicate', bias=False)
-    weights_x = torch.from_numpy(x_filter).float().unsqueeze(0).unsqueeze(0)
-    weights_y = torch.from_numpy(y_filter).float().unsqueeze(0).unsqueeze(0)
+    weights_x = torch.tensor(
+        [[[[1, 0, -1], [2, 0, -2], [1, 0, -1]]]],
+        device=device,
+        dtype=torch.float32
+    )
 
-    weights_x = weights_x.to(device)
-    weights_y = weights_y.to(device)
+    weights_y = torch.tensor(
+        [[[[1, 2, 1], [0, 0, 0], [-1, -2, -1]]]],
+        device=device,
+        dtype=torch.float32
+    )
 
     convx.weight = nn.Parameter(weights_x)
     convy.weight = nn.Parameter(weights_y)

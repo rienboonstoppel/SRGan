@@ -11,9 +11,14 @@ from argparse import ArgumentParser
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.callbacks import ModelCheckpoint
+import warnings
+from pytorch_lightning.plugins import DDPPlugin
 
 # print(os.getcwd())
 # torch.cuda.empty_cache()
+
+warnings.filterwarnings('ignore', '.*The dataloader, .*')
+
 
 def main():
     pl.seed_everything(21011998)
@@ -22,7 +27,10 @@ def main():
     parser.add_argument('--std', default=0.3548, type=float)
     parser.add_argument('--num_workers', default=4, type=int)
     parser.add_argument('--root_dir', default='/mnt/beta/djboonstoppel/Code', type=str)
+    parser.add_argument('--warmup_batches', default=50, type=int)
     parser.add_argument('--name', required=True, type=str)
+
+    # --precision=16 --gpus=1 --log_every_n_steps=50 --max_epochs=-1 --max_time="00:00:00:00"
 
     parser = pl.Trainer.add_argparse_args(parser)
     parser = LitTrainer.add_model_specific_args(parser)
@@ -30,8 +38,8 @@ def main():
 
     ### Single config ###
     config = {
-        'patch_size': 224,
-        'batch_size': 16,
+        'patch_size': 64,
+        'batch_size': 256,
         'patients_frac': 0.5,
         'patch_overlap': 0.5,
         'optimizer': 'adam',
@@ -39,8 +47,6 @@ def main():
         'b1': 0.9,
         'b2': 0.5,
         'edge_loss': 2,
-        'content_alpha': 0.1,
-        'adversarial_alpha': 0.1,
     }
 
     generator = GeneratorRRDB(channels=1, filters=64, num_res_blocks=1)
@@ -65,10 +71,11 @@ def main():
         max_epochs=args.max_epochs,
         max_time=args.max_time,
         logger=logger,
-        log_every_n_steps=100,
-        # strategy='ddp_spawn',
+        log_every_n_steps=args.log_every_n_steps,
+        strategy=DDPPlugin(find_unused_parameters=True),
         precision=args.precision,
         callbacks=[lr_monitor, checkpoint_callback],
+        enable_progress_bar=True,
     )
 
     trainer.fit(

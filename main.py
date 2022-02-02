@@ -10,9 +10,15 @@ from argparse import ArgumentParser
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.callbacks import ModelCheckpoint
+import warnings
+from pytorch_lightning.plugins import DDPPlugin
+
 
 # print(os.getcwd())
 # torch.cuda.empty_cache()
+
+warnings.filterwarnings('ignore', '.*The dataloader, .*')
+
 
 def main():
     pl.seed_everything(21011998)
@@ -66,7 +72,7 @@ def main():
         max_time=args.max_time,
         logger=logger,
         log_every_n_steps=args.log_every_n_steps,
-        # strategy='ddp_spawn',
+        strategy=DDPPlugin(find_unused_parameters=False),
         precision=args.precision,
         callbacks=[lr_monitor, checkpoint_callback],
         enable_progress_bar=True,
