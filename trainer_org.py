@@ -8,7 +8,9 @@ import torchio as tio
 import torchvision
 from dataset_tio import data_split, Normalize, calculate_overlap
 from edgeloss import edge_loss1, edge_loss2, edge_loss3
+import warnings
 
+warnings.filterwarnings('ignore', '.*The dataloader, .*')
 
 class LitTrainer(pl.LightningModule):
 
@@ -56,6 +58,8 @@ class LitTrainer(pl.LightningModule):
         self.criterion_pixel = torch.nn.L1Loss()
         self.criterion_content = torch.nn.L1Loss()
 
+        self.alpha_content = config['alpha_content']
+
     def make_grid(self, imgs_lr, imgs_hr, gen_hr):
         imgs_lr = torch.clamp((imgs_lr[:10] * self.args.std), 0, 1).squeeze()
         imgs_hr = torch.clamp((imgs_hr[:10] * self.args.std), 0, 1).squeeze()
@@ -87,7 +91,8 @@ class LitTrainer(pl.LightningModule):
         real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1)).detach()
         loss_content = self.criterion_content(gen_features, real_features)
 
-        g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + loss_content
+        # g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_content * loss_content
+        g_loss = loss_content
 
         self.log('Step loss/generator', {'train_loss_edge': loss_edge,
                                          'train_loss_pixel': loss_pixel,
@@ -117,7 +122,8 @@ class LitTrainer(pl.LightningModule):
             real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1)).detach()
             loss_content = self.criterion_content(gen_features, real_features)
 
-            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + loss_content
+            # g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_content * loss_content
+            g_loss = loss_content
             self.log('Epoch loss/generator', {'Val': g_loss}, on_step=False, on_epoch=True, sync_dist=True,
                      batch_size=self.batch_size)
 

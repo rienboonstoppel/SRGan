@@ -12,6 +12,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.callbacks import ModelCheckpoint
 import warnings
 from pytorch_lightning.plugins import DDPPlugin
+from datetime import timedelta
 
 
 # print(os.getcwd())
@@ -42,12 +43,13 @@ def main():
         'learning_rate': 1e-4,
         'patch_size': args.patch_size,
         'batch_size': args.batch_size,
-        'patients_frac': 0.5,
+        'patients_frac': 0.1,
         'patch_overlap': 0.5,
         'optimizer': 'adam',
         'edge_loss': 2,
         'b1': 0.9,
         'b2': 0.5,
+        'alpha_content': 1,
     }
 
     generator = GeneratorRRDB(channels=1, filters=64, num_res_blocks=1)
@@ -56,12 +58,19 @@ def main():
     os.makedirs(os.path.join(args.root_dir, 'log', args.name), exist_ok=True)
     logger = TensorBoardLogger('log', name=args.name, default_hp_metric=False)
     lr_monitor = LearningRateMonitor(logging_interval='step')
-    checkpoint_callback = ModelCheckpoint(
+    checkpoint_callback_best = ModelCheckpoint(
         monitor="val_loss",
         dirpath=os.path.join(args.root_dir, 'log', args.name),
-        filename=args.name+"-checkpoint",
+        filename=args.name+"-checkpoint-best",
         save_top_k=1,
         mode="min",
+    )
+
+    checkpoint_callback_time = ModelCheckpoint(
+        dirpath=os.path.join(args.root_dir, 'log', args.name),
+        filename=args.name+"-checkpoint-{epoch}",
+        save_top_k=-1,
+        train_time_interval=timedelta(hours=2),
     )
 
     model = LitTrainer(netG=generator, netF=feature_extractor, args=args, config=config)
@@ -74,7 +83,7 @@ def main():
         log_every_n_steps=args.log_every_n_steps,
         strategy=DDPPlugin(find_unused_parameters=False),
         precision=args.precision,
-        callbacks=[lr_monitor, checkpoint_callback],
+        callbacks=[lr_monitor, checkpoint_callback_best, checkpoint_callback_time],
         enable_progress_bar=True,
     )
 
