@@ -91,8 +91,7 @@ class LitTrainer(pl.LightningModule):
         real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1)).detach()
         loss_content = self.criterion_content(gen_features, real_features)
 
-        # g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_content * loss_content
-        g_loss = loss_content
+        g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_content * loss_content
 
         self.log('Step loss/generator', {'train_loss_edge': loss_edge,
                                          'train_loss_pixel': loss_pixel,
@@ -103,11 +102,11 @@ class LitTrainer(pl.LightningModule):
         self.log('Epoch loss/generator', {'Train': g_loss,
                                           }, on_step=False, on_epoch=True, sync_dist=True, batch_size=self.batch_size)
 
-        train_batches_done = batch_idx + self.current_epoch * self.train_len
-        if train_batches_done % (self.args.log_every_n_steps * 5) == 0:
-            grid = self.make_grid(imgs_lr, imgs_hr, gen_hr)
-            self.logger.experiment.add_image('generated images/train', grid, train_batches_done,
-                                             dataformats='CHW')
+        # train_batches_done = batch_idx + self.current_epoch * self.train_len
+        # if train_batches_done % (self.args.log_every_n_steps * 5) == 0:
+        #     grid = self.make_grid(imgs_lr, imgs_hr, gen_hr)
+        #     self.logger.experiment.add_image('generated images/train', grid, train_batches_done,
+        #                                      dataformats='CHW')
 
         return g_loss
 
@@ -122,16 +121,16 @@ class LitTrainer(pl.LightningModule):
             real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1)).detach()
             loss_content = self.criterion_content(gen_features, real_features)
 
-            # g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_content * loss_content
-            g_loss = loss_content
+            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_content * loss_content
+
             self.log('Epoch loss/generator', {'Val': g_loss}, on_step=False, on_epoch=True, sync_dist=True,
                      batch_size=self.batch_size)
 
-            val_batches_done = batch_idx + self.current_epoch * self.val_len
-            if val_batches_done % self.args.log_every_n_steps == 0:
-                grid = self.make_grid(imgs_lr, imgs_hr, gen_hr)
-                self.logger.experiment.add_image('generated images/val', grid, val_batches_done,
-                                                 dataformats='CHW')
+            # val_batches_done = batch_idx + self.current_epoch * self.val_len
+            # if val_batches_done % self.args.log_every_n_steps == 0:
+            #     grid = self.make_grid(imgs_lr, imgs_hr, gen_hr)
+            #     self.logger.experiment.add_image('generated images/val', grid, val_batches_done,
+            #                                      dataformats='CHW')
 
         return g_loss
 
