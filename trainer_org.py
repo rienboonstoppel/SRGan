@@ -29,45 +29,42 @@ class LitTrainer(pl.LightningModule):
                  **kwargs
                  ):
         super().__init__()
+        self.args = args
         self.save_hyperparameters(ignore=['netG', 'netF', 'netD'])
+
+        self.netG = netG
+        self.netF = netF.eval()
+
+        self.criterion_pixel = torch.nn.L1Loss()    # method to calculate pixel differences
+        self.criterion_content = torch.nn.L1Loss()  # method to calculate differences between vgg features
+        self.criterion_edge = globals()['edge_loss' + str(config['edge_loss'])]
 
         self.patients_frac = config['patients_frac']
         self.patch_overlap = config['patch_overlap']
         self.batch_size = config['batch_size']
         self.patch_size = config['patch_size']
+        self.alpha_content = config['alpha_content']
+        self.log_images = True
 
         if config['optimizer'] == 'sgd':
-            self.optimizer = torch.optim.SGD(netG.parameters(), lr=config['learning_rate'], momentum=0.9,
+            self.optimizer = torch.optim.SGD(netG.parameters(),
+                                             lr=config['learning_rate'],
+                                             momentum=0.9,
                                              nesterov=True)
         elif config['optimizer'] == 'adam':
-            self.optimizer = torch.optim.Adam(netG.parameters(), lr=config['learning_rate'],
+            self.optimizer = torch.optim.Adam(netG.parameters(),
+                                              lr=config['learning_rate'],
                                               betas=(config['b1'], config['b2']))
 
-        if config['edge_loss'] == 1:
-            self.criterion_edge = edge_loss1
-        elif config['edge_loss'] == 2:
-            self.criterion_edge = edge_loss2
-        elif config['edge_loss'] == 3:
-            self.criterion_edge = edge_loss3
 
-        self.netG = netG
-        self.netF = netF.eval()
-
-        self.args = args
-
-        self.criterion_pixel = torch.nn.L1Loss()
-        self.criterion_content = torch.nn.L1Loss()
-
-        self.alpha_content = config['alpha_content']
-
-    def make_grid(self, imgs_lr, imgs_hr, gen_hr):
+    def make_grid(self, imgs_lr, imgs_hr, imgs_sr):
         imgs_lr = torch.clamp((imgs_lr[:10] * self.args.std), 0, 1).squeeze()
         imgs_hr = torch.clamp((imgs_hr[:10] * self.args.std), 0, 1).squeeze()
-        gen_hr = torch.clamp((gen_hr[:10] * self.args.std), 0, 1).squeeze()
-        diff = (imgs_hr - gen_hr) * 2 + .5
+        imgs_sr = torch.clamp((imgs_sr[:10] * self.args.std), 0, 1).squeeze()
+        diff = (imgs_hr - imgs_sr) * 2 + .5
 
         img_grid = torch.cat(
-            [torch.stack([a, b, c, d]) for a, b, c, d in zip(imgs_lr, imgs_hr, gen_hr, diff)]).unsqueeze(1)
+            [torch.stack([a, b, c, d]) for a, b, c, d in zip(imgs_lr, imgs_hr, imgs_sr, diff)]).unsqueeze(1)
 
         tb_grid = torchvision.utils.make_grid(img_grid, nrow=4)
         return tb_grid
@@ -80,14 +77,12 @@ class LitTrainer(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         imgs_lr, imgs_hr = self.prepare_batch(batch)
+        imgs_sr = self(imgs_lr)
 
-        gen_hr = self(imgs_lr)
+        loss_edge = self.criterion_edge(imgs_sr, imgs_hr)
+        loss_pixel = self.criterion_pixel(imgs_sr, imgs_hr)
 
-        loss_edge = self.criterion_edge(gen_hr, imgs_hr)
-
-        loss_pixel = self.criterion_pixel(gen_hr, imgs_hr)
-
-        gen_features = self.netF(torch.repeat_interleave(gen_hr, 3, 1))
+        gen_features = self.netF(torch.repeat_interleave(imgs_sr, 3, 1))
         real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1)).detach()
         loss_content = self.criterion_content(gen_features, real_features)
 
@@ -102,22 +97,23 @@ class LitTrainer(pl.LightningModule):
         self.log('Epoch loss/generator', {'Train': g_loss,
                                           }, on_step=False, on_epoch=True, sync_dist=True, batch_size=self.batch_size)
 
-        # train_batches_done = batch_idx + self.current_epoch * self.train_len
-        # if train_batches_done % (self.args.log_every_n_steps * 5) == 0:
-        #     grid = self.make_grid(imgs_lr, imgs_hr, gen_hr)
-        #     self.logger.experiment.add_image('generated images/train', grid, train_batches_done,
-        #                                      dataformats='CHW')
+        if self.log_images:
+            train_batches_done = batch_idx + self.current_epoch * self.train_len
+            if train_batches_done % (self.args.log_every_n_steps * 5) == 0:
+                grid = self.make_grid(imgs_lr, imgs_hr, imgs_sr)
+                self.logger.experiment.add_image('generated images/train', grid, train_batches_done,
+                                                 dataformats='CHW')
 
         return g_loss
 
     def validation_step(self, batch, batch_idx):
         with torch.no_grad():
             imgs_lr, imgs_hr = self.prepare_batch(batch)
-            gen_hr = self(imgs_lr)
-            loss_edge = self.criterion_edge(gen_hr, imgs_hr)
-            loss_pixel = self.criterion_pixel(gen_hr, imgs_hr)
+            imgs_sr = self(imgs_lr)
+            loss_edge = self.criterion_edge(imgs_sr, imgs_hr)
+            loss_pixel = self.criterion_pixel(imgs_sr, imgs_hr)
 
-            gen_features = self.netF(torch.repeat_interleave(gen_hr, 3, 1))
+            gen_features = self.netF(torch.repeat_interleave(imgs_sr, 3, 1))
             real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1)).detach()
             loss_content = self.criterion_content(gen_features, real_features)
 
@@ -126,11 +122,12 @@ class LitTrainer(pl.LightningModule):
             self.log('Epoch loss/generator', {'Val': g_loss}, on_step=False, on_epoch=True, sync_dist=True,
                      batch_size=self.batch_size)
 
-            # val_batches_done = batch_idx + self.current_epoch * self.val_len
-            # if val_batches_done % self.args.log_every_n_steps == 0:
-            #     grid = self.make_grid(imgs_lr, imgs_hr, gen_hr)
-            #     self.logger.experiment.add_image('generated images/val', grid, val_batches_done,
-            #                                      dataformats='CHW')
+            if self.log_images:
+                val_batches_done = batch_idx + self.current_epoch * self.val_len
+                if val_batches_done % self.args.log_every_n_steps == 0:
+                    grid = self.make_grid(imgs_lr, imgs_hr, imgs_sr)
+                    self.logger.experiment.add_image('generated images/val', grid, val_batches_done,
+                                                     dataformats='CHW')
 
         return g_loss
 

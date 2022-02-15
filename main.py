@@ -32,7 +32,7 @@ def main():
     parser.add_argument('--patch_size', required=True, type=int)
     parser.add_argument('--batch_size', required=True, type=int)
 
-    #precision, gpus, log_every_n_steps, max_epochs, max_time
+    # --precision=16 --gpus=1 --log_every_n_steps=50 --max_epochs=-1 --max_time="00:00:00:00"
 
     parser = pl.Trainer.add_argparse_args(parser)
     parser = LitTrainer.add_model_specific_args(parser)
@@ -43,7 +43,7 @@ def main():
         'learning_rate': 1e-4,
         'patch_size': args.patch_size,
         'batch_size': args.batch_size,
-        'patients_frac': 0.1,
+        'patients_frac': 0.5,
         'patch_overlap': 0.5,
         'optimizer': 'adam',
         'edge_loss': 2,
