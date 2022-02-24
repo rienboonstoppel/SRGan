@@ -10,16 +10,11 @@ from argparse import ArgumentParser
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.callbacks import ModelCheckpoint
-import warnings
 from pytorch_lightning.plugins import DDPPlugin
 from datetime import timedelta
 
-
 # print(os.getcwd())
 # torch.cuda.empty_cache()
-
-warnings.filterwarnings('ignore', '.*The dataloader, .*')
-
 
 def main():
     pl.seed_everything(21011998)
@@ -94,4 +89,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

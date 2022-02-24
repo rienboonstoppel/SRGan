@@ -1,54 +1,102 @@
 from collections import namedtuple
-
 # import kornia.color as kc
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models.vgg as vgg
 
-
 class GANLoss(nn.Module):
     """
     PyTorch module for GAN loss.
-    This code is inspired by https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix.
     """
     def __init__(self,
-                 gan_mode='wgangp',
-                 target_real_label=1.0,
-                 target_fake_label=0.0):
+                 gan_mode,
+                 real_label=1.0,
+                 fake_label=0.0):
 
         super(GANLoss, self).__init__()
 
-        self.register_buffer('real_label', torch.tensor(target_real_label))
-        self.register_buffer('fake_label', torch.tensor(target_fake_label))
+        self.register_buffer('real_label', torch.tensor(real_label))
+        self.register_buffer('fake_label', torch.tensor(fake_label))
 
         self.gan_mode = gan_mode
+
         if gan_mode == 'lsgan':
             self.loss = nn.MSELoss()
         elif gan_mode == 'vanilla':
             self.loss = nn.BCEWithLogitsLoss()
-        elif gan_mode in ['wgangp']:
+        elif gan_mode == 'wgan':
             self.loss = None
         else:
             raise NotImplementedError('gan mode %s not implemented' % gan_mode)
 
-    def get_target_tensor(self, prediction, target_is_real):
+    def get_target_tensor(self, sample, target_is_real):
         if target_is_real:
-            target_tensor = self.real_label
+            target_tensor = self.real_label.expand_as(sample)
+            target_tensor = target_tensor.type_as(sample)
         else:
-            target_tensor = self.fake_label
-        return target_tensor.expand_as(prediction).detach()
+            target_tensor = self.fake_label.expand_as(sample)
+            target_tensor = target_tensor.type_as(sample)
+        return target_tensor
 
-    def forward(self, prediction, target_is_real):
+    def forward(self, sample, target_is_real):
         if self.gan_mode in ['lsgan', 'vanilla']:
-            target_tensor = self.get_target_tensor(prediction, target_is_real)
-            loss = self.loss(prediction, target_tensor)
-        elif self.gan_mode == 'wgangp':
+            target_tensor = self.get_target_tensor(sample, target_is_real)
+            loss = self.loss(sample, target_tensor)
+        elif self.gan_mode == 'wgan':
             if target_is_real:
-                loss = - prediction.mean()
+                loss = - sample.mean()
             else:
-                loss = prediction.mean()
+                loss = sample.mean()
         return loss
+
+class GradientPenalty(nn.Module):
+    """
+    PyTorch module for Gradient Penalty
+    """
+    def __init__(self,
+                 critic,
+                 fake_label=0.0,
+                 ):
+        super(GradientPenalty, self).__init__()
+
+        self.register_buffer('fake_label', torch.tensor(fake_label))
+        self.critic = critic
+
+    def forward(self, samples_real, samples_fake):
+        # Random weight term for interpolation between real and fake samples
+        alpha = torch.rand((samples_real.size(0), 1, 1, 1)).type_as(samples_real)
+
+        # mix/interpolate images
+        interpolates = (alpha * samples_real + (1 - alpha) * samples_fake).requires_grad_(True)
+        interpolates = interpolates.type_as(samples_real)
+
+        # Calculate the critic's scores on the mixed images
+        interpolates_scores = self.critic(interpolates)
+
+        target_tensor = self.fake_label.expand_as(interpolates_scores)
+        target_tensor = target_tensor.type_as(interpolates_scores)
+
+        # Take the gradient of the scores with respect to the images
+        gradients = torch.autograd.grad(
+            inputs=interpolates,
+            outputs=interpolates_scores,
+            grad_outputs=target_tensor,
+            create_graph=True,
+            retain_graph=True,
+            only_inputs=True,
+        )[0]
+
+        # Flatten the gradients so that each row captures one image
+        gradients = gradients.view(gradients.size(0), -1).type_as(samples_real)
+
+        # Calculate the magnitude of every row
+        gradients_norm = gradients.norm(2, dim=1)
+
+        # Penalize the mean squared distance of the gradient norms from 1
+        gradient_penalty = torch.mean((gradients_norm - 1) ** 2)
+
+        return gradient_penalty
 
 
 class VGGLoss(nn.Module):

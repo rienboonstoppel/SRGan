@@ -7,6 +7,10 @@ import torchvision
 from lightning_losses import GANLoss, GradientPenalty
 from dataset_tio import data_split, Normalize, calculate_overlap
 from edgeloss import edge_loss1, edge_loss2, edge_loss3
+from torchvision.utils import save_image, make_grid
+import warnings
+
+warnings.filterwarnings('ignore', '.*The dataloader, .*')
 
 
 class LitTrainer(pl.LightningModule):
@@ -31,9 +35,9 @@ class LitTrainer(pl.LightningModule):
         self.netF = netF.eval()
         self.netD = netD
 
-        self.criterion_pixel = torch.nn.L1Loss()        # method to calculate pixel differences
-        self.criterion_content = torch.nn.L1Loss()      # method to calculate differences between vgg features
-        self.criterion_GAN = GANLoss(gan_mode='wgan')   # method to calculate adversarial loss
+        self.criterion_pixel = torch.nn.L1Loss()  # method to calculate pixel differences
+        self.criterion_content = torch.nn.L1Loss()  # method to calculate differences between vgg features
+        self.criterion_GAN = GANLoss(gan_mode='vanilla')  # method to calculate adversarial loss
         self.gradient_penalty = GradientPenalty(critic=self.netD, fake_label=1.0)
         self.criterion_edge = globals()['edge_loss' + str(config['edge_loss'])]
 
@@ -41,7 +45,7 @@ class LitTrainer(pl.LightningModule):
         self.patch_overlap = config['patch_overlap']
         self.batch_size = config['batch_size']
         self.patch_size = config['patch_size']
-        self.ragan = True
+        self.gan = args.gan
         self.log_images = True
 
         if config['optimizer'] == 'sgd':
@@ -54,17 +58,14 @@ class LitTrainer(pl.LightningModule):
                                               lr=config['learning_rate'],
                                               betas=(config['b1'], config['b2']))
 
-    def make_grid(self, imgs_lr, imgs_hr, imgs_sr):
-        imgs_lr = torch.clamp((imgs_lr[:10] * self.args.std), 0, 1).squeeze()
-        imgs_hr = torch.clamp((imgs_hr[:10] * self.args.std), 0, 1).squeeze()
-        imgs_sr = torch.clamp((imgs_sr[:10] * self.args.std), 0, 1).squeeze()
+    def imgs_cat(self, imgs_lr, imgs_hr, imgs_sr):
+        imgs_lr = (imgs_lr[:10] * self.args.std).squeeze()
+        imgs_hr = (imgs_hr[:10] * self.args.std).squeeze()
+        imgs_sr = (imgs_sr[:10] * self.args.std).squeeze()
         diff = (imgs_hr - imgs_sr) * 2 + .5
-
         img_grid = torch.cat(
             [torch.stack([a, b, c, d]) for a, b, c, d in zip(imgs_lr, imgs_hr, imgs_sr, diff)]).unsqueeze(1)
-
-        tb_grid = torchvision.utils.make_grid(img_grid, nrow=4)
-        return tb_grid
+        return img_grid
 
     def forward(self, inputs):
         return self.netG(inputs)
@@ -79,9 +80,22 @@ class LitTrainer(pl.LightningModule):
 
         if self.log_images:
             if train_batches_done % (self.args.log_every_n_steps * 5) == 0:
-                grid = self.make_grid(imgs_lr, imgs_hr, imgs_sr)
-                self.logger.experiment.add_image('generated images/train', grid, train_batches_done,
+                grid = self.imgs_cat(imgs_lr, imgs_hr, imgs_sr)
+                self.logger.experiment.add_image('generated images/train',
+                                                 make_grid(torch.clamp(grid, 0, 1), nrow=4),
+                                                 train_batches_done,
                                                  dataformats='CHW')
+                save_dir = os.path.join(self.logger.log_dir, 'images', 'training')
+                os.makedirs(save_dir, exist_ok=True)
+                save_image(grid, save_dir + "/%04d.png" % train_batches_done, nrow=4, normalize=False)
+                inference_path = os.path.join(save_dir, 'inference')
+                os.makedirs(inference_path + "/%04d" % train_batches_done, exist_ok=True)
+                for i in range(1):
+                    img_sr = imgs_sr[i, 0, :, :] * self.args.std
+                    save_image(img_sr, os.path.join(inference_path, "%04d" % train_batches_done, '%04d.png' % i))
+                    np.savetxt(os.path.join(inference_path, "%04d" % train_batches_done, '%04d.csv' % i),
+                               img_sr.detach().cpu().numpy(), delimiter=',')
+
         # ---------------------
         #  Train Generator
         # ---------------------
@@ -103,26 +117,26 @@ class LitTrainer(pl.LightningModule):
             pred_real = self.netD(imgs_hr).detach()
             pred_fake = self.netD(imgs_sr)
 
-            if self.ragan:
+            if self.gan:
                 pred_fake -= pred_real.mean(0, keepdim=True)
 
             # Adversarial loss
             loss_adv = self.criterion_GAN(pred_fake, True)
             # Calculate gradient penalty
-            gradient_penalty = self.gradient_penalty(imgs_hr, imgs_sr)
+            # gradient_penalty = self.gradient_penalty(imgs_hr, imgs_sr)
 
-            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + 1 * loss_adv + 1 * gradient_penalty
+            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + .1 * loss_adv  # + 1 * gradient_penalty
 
             self.log('Step loss/generator', {'train_loss_edge': loss_edge,
                                              'train_loss_pixel': loss_pixel,
                                              # 'train_loss_content': loss_content,
                                              'train_loss_adv': loss_adv,
-                                             'gradient_penalty': gradient_penalty,
+                                             # 'gradient_penalty': gradient_penalty,
                                              },
                      on_step=True,
                      on_epoch=False,
                      sync_dist=True,
-                     prog_bar=False,
+                     prog_bar=True,
                      batch_size=self.batch_size)
 
             self.log('Epoch loss/generator', {'Train': g_loss,
@@ -142,7 +156,7 @@ class LitTrainer(pl.LightningModule):
             pred_real = self.netD(imgs_hr)
             pred_fake = self.netD(imgs_sr.detach())
 
-            if self.ragan:
+            if self.gan:
                 pred_real, pred_fake = pred_real - pred_fake.mean(0, keepdim=True), \
                                        pred_fake - pred_real.mean(0, keepdim=True)
 
@@ -180,14 +194,14 @@ class LitTrainer(pl.LightningModule):
             pred_fake = self.netD(imgs_sr)
 
             # Relativistic average GAN
-            if self.ragan:
+            if self.gan:
                 pred_real, pred_fake = pred_real - pred_fake.mean(0, keepdim=True), \
                                        pred_fake - pred_real.mean(0, keepdim=True)
 
             # Adversarial loss
             loss_adv = self.criterion_GAN(pred_fake, True)  # Gradient Penalty cannot be calculated during validation
 
-            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + 1 * loss_adv
+            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + .1 * loss_adv
 
             # ---------------------
             #  Validate Discriminator
@@ -199,22 +213,29 @@ class LitTrainer(pl.LightningModule):
 
             d_loss = (loss_real + loss_fake) / 2
 
-            self.log('Epoch loss/generator', {'Val': g_loss},
-                     on_step=False,
-                     on_epoch=True,
-                     sync_dist=True,
-                     batch_size=self.batch_size)
-            self.log('Epoch loss/discriminator', {"Val": d_loss},
-                     on_step=False,
-                     on_epoch=True,
-                     sync_dist=True,
-                     batch_size=self.batch_size)
+        self.log('Epoch loss/generator', {'Val': g_loss},
+                 on_step=False,
+                 on_epoch=True,
+                 sync_dist=True,
+                 batch_size=self.batch_size)
+        self.log('Epoch loss/discriminator', {"Val": d_loss},
+                 on_step=False,
+                 on_epoch=True,
+                 sync_dist=True,
+                 batch_size=self.batch_size)
+
         if self.log_images:
             val_batches_done = batch_idx + self.current_epoch * self.val_len
             if val_batches_done % self.args.log_every_n_steps == 0:
-                grid = self.make_grid(imgs_lr, imgs_hr, imgs_sr)
-                self.logger.experiment.add_image('generated images/val', grid, val_batches_done,
+                grid = self.imgs_cat(imgs_lr, imgs_hr, imgs_sr)
+                self.logger.experiment.add_image('generated images/val',
+                                                 make_grid(torch.clamp(grid, 0, 1), nrow=4),
+                                                 val_batches_done,
                                                  dataformats='CHW')
+                save_dir = os.path.join(self.logger.log_dir, 'images', 'val')
+                os.makedirs(save_dir, exist_ok=True)
+                save_image(grid, save_dir + "/%04d.png" % val_batches_done, nrow=4, normalize=False)
+
         return g_loss
 
     def validation_epoch_end(self, outputs):
@@ -292,5 +313,9 @@ class LitTrainer(pl.LightningModule):
         lr_scheduler = torch.optim.lr_scheduler.ExponentialLR
 
         return (
-            {'optimizer': opt_g, 'lr_scheduler': {'scheduler': lr_scheduler(self.optimizer, gamma=0.99999)}},
-            {'optimizer': opt_d, 'lr_scheduler': {'scheduler': lr_scheduler(self.optimizer, gamma=0.99999)}})
+            {'optimizer': opt_g,
+             'lr_scheduler': {'scheduler': lr_scheduler(self.optimizer, gamma=0.99999)},
+             'frequency': 1},
+            {'optimizer': opt_d,
+             'lr_scheduler': {'scheduler': lr_scheduler(self.optimizer, gamma=0.99999)},
+             'frequency': 1})

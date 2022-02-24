@@ -11,14 +11,10 @@ from argparse import ArgumentParser
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.callbacks import ModelCheckpoint
-import warnings
 from pytorch_lightning.plugins import DDPPlugin
 from datetime import timedelta
+from utils import print_config
 
-# print(os.getcwd())
-# torch.cuda.empty_cache()
-
-warnings.filterwarnings('ignore', '.*The dataloader, .*')
 
 def main():
     pl.seed_everything(21011998)
@@ -31,6 +27,7 @@ def main():
     parser.add_argument('--name', required=True, type=str)
     parser.add_argument('--patch_size', required=True, type=int)
     parser.add_argument('--batch_size', required=True, type=int)
+    parser.add_argument('--gan', action='store_false')
 
     # --precision=16 --gpus=1 --log_every_n_steps=50 --max_epochs=-1 --max_time="00:00:00:00"
 
@@ -45,12 +42,14 @@ def main():
         'batch_size': args.batch_size,
         'patients_frac': 0.5,
         'patch_overlap': 0.5,
-        'optimizer': 'adam',
+        'optimizer': 'sgd',
         'edge_loss': 2,
         'b1': 0.9,
         'b2': 0.5,
         'alpha_content': 1,
     }
+
+    print_config(config, args)
 
     generator = GeneratorRRDB(channels=1, filters=64, num_res_blocks=1)
     discriminator = Discriminator(input_shape=(1, config['patch_size'], config['patch_size']))
@@ -58,6 +57,7 @@ def main():
 
     os.makedirs(os.path.join(args.root_dir, 'log', args.name), exist_ok=True)
     logger = TensorBoardLogger('log', name=args.name, default_hp_metric=False)
+
     lr_monitor = LearningRateMonitor(logging_interval='step')
     checkpoint_callback_best = ModelCheckpoint(
         monitor="val_loss",
@@ -68,10 +68,10 @@ def main():
     )
 
     checkpoint_callback_time = ModelCheckpoint(
-        dirpath=os.path.join(args.root_dir, 'log', args.name),
+        dirpath=logger.log_dir,
         filename=args.name+"-checkpoint-{epoch}",
         save_top_k=-1,
-        train_time_interval=timedelta(hours=2),
+        train_time_interval=timedelta(hours=1),
     )
 
     model = LitTrainer(netG=generator, netF=feature_extractor, netD=discriminator, args=args, config=config)

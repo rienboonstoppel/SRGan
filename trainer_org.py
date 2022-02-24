@@ -1,9 +1,6 @@
 import os
 import pytorch_lightning as pl
 import torch
-# from metrics import *
-# import sys
-# from torchvision.utils import save_image
 import torchio as tio
 import torchvision
 from dataset_tio import data_split, Normalize, calculate_overlap
@@ -22,8 +19,7 @@ class LitTrainer(pl.LightningModule):
         return parent_parser
 
     def __init__(self,
-                 netG,
-                 netF,
+                 netG, netF,
                  config,
                  args,
                  **kwargs
@@ -203,7 +199,5 @@ class LitTrainer(pl.LightningModule):
     def configure_optimizers(self):
         return {
             'optimizer': self.optimizer,
-            'lr_scheduler': {
-                'scheduler': torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.99999),
-            },
-        }
+            'lr_scheduler': {'scheduler': torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.99999)}
+            }
