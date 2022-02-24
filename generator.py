@@ -56,16 +56,16 @@ class GeneratorRRDB(nn.Module):
 
         # First conv layers
         self.conv1 = nn.Sequential(
-            nn.Conv2d(channels, filters, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(channels, filters, kernel_size=3, stride=1, padding='same'),
             nn.LeakyReLU(),
-            nn.Conv2d(filters, filters, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(filters, filters, kernel_size=3, stride=1, padding='same'),
             nn.LeakyReLU(),
         )
         # Residual blocks
         self.res_blocks = nn.Sequential(*[ResidualInResidualDenseBlock(filters) for _ in range(num_res_blocks)])
         # Final output block
         self.conv2 = nn.Sequential(
-            nn.Conv2d(num_res_blocks * 3 * filters, channels, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(num_res_blocks * 3 * filters, channels, kernel_size=3, stride=1, padding='same'),
             # nn.Linear(filters, filters),
         )
 
