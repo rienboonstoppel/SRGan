@@ -25,7 +25,7 @@ warnings.filterwarnings('ignore', '.*The dataloader, .*')
 
 
 def train_tune(config, args):
-    generator = GeneratorRRDB(channels=1, filters=64, num_res_blocks=1)
+    generator = GeneratorRRDB(channels=1, filters=config['num_filters'], num_res_blocks=1)
     feature_extractor = FeatureExtractor()
 
     log_path = tune.get_trial_dir()
@@ -35,19 +35,8 @@ def train_tune(config, args):
 
     ckpt_path = os.path.join(args.root_dir, 'ray_results', args.name, 'checkpoints')
     os.makedirs(ckpt_path, exist_ok=True)
-    ckpt_filename = 'checkpoint_{}'.format(config['alpha_content'],
+    ckpt_filename = 'checkpoint_{}_{}_{}'.format(config['batch_size'], config['num_filters'], config['optimizer']
                                            )
-
-    # ckpt_filename = 'checkpoint_{}_{}_{}_{}_{}_{}'.format(config['patch_size'],
-    #                                                       config['batch_size'],
-    #                                                       config['patients_frac'],
-    #                                                       config['edge_loss'],
-    #                                                       config['optimizer'],
-    #                                                       config['learning_rate'],
-    #                                                       config['b1'],
-    #                                                       config['b2'],
-    #                                                       config['alpha_content']
-    #                                                       )
 
     checkpoint_callback_best = ModelCheckpoint(
         monitor="val_loss",
@@ -63,7 +52,6 @@ def train_tune(config, args):
         save_top_k=-1,
         train_time_interval=timedelta(hours=2),
     )
-
 
     model = LitTrainer(netG=generator, netF=feature_extractor, args=args, config=config)
 
@@ -101,7 +89,6 @@ def main():
     parser.add_argument('--name', required=True, type=str)
     parser.add_argument('--num_samples', required=True, type=int)
     parser.add_argument('--patch_size', required=True, type=int)
-    parser.add_argument('--batch_size', required=True, type=int)
 
     # precision, log_every_n_steps, max_epochs, max_time
 
@@ -110,20 +97,21 @@ def main():
     args = parser.parse_args()
 
     config = {
-        'learning_rate': 1e-4,
-        'patch_size': args.patch_size,
-        'batch_size': args.batch_size,
+        'batch_size': tune.grid_search([32, 256]),
+        'num_filters': tune.grid_search([16, 64]),
+        'optimizer': tune.grid_search(['adam', 'sgd']),
         'patients_frac': 0.5,
         'patch_overlap': 0.5,
-        'optimizer': 'adam',
         'edge_loss': 2,
         'b1': 0.9,
         'b2': 0.5,
-        'alpha_content': tune.grid_search([0, 0.01, 0.1, 0.5, 1, 5]),
+        'alpha_content': 1,
+        'learning_rate': 1e-4,
+        'patch_size': args.patch_size,
     }
 
     reporter = CLIReporter(
-        parameter_columns=['alpha_content'],
+        parameter_columns=['batch_size', 'num_filters', 'optimizer'],
         metric_columns=["loss", "training_iteration"])
 
     resources_per_trial = {'cpu': 8, 'gpu': 1}

@@ -40,13 +40,15 @@ class LitTrainer(pl.LightningModule):
         self.criterion_GAN = GANLoss(gan_mode='vanilla')  # method to calculate adversarial loss
         self.gradient_penalty = GradientPenalty(critic=self.netD, fake_label=1.0)
         self.criterion_edge = globals()['edge_loss' + str(config['edge_loss'])]
+        self.alpha_adv = config['alpha_adversarial']
 
         self.patients_frac = config['patients_frac']
         self.patch_overlap = config['patch_overlap']
         self.batch_size = config['batch_size']
         self.patch_size = config['patch_size']
-        self.gan = args.gan
-        self.log_images = True
+        self.ragan = config['ragan']
+        self.log_images_train = False
+        self.log_images_val = True
 
         if config['optimizer'] == 'sgd':
             self.optimizer = torch.optim.SGD(netG.parameters(),
@@ -78,7 +80,7 @@ class LitTrainer(pl.LightningModule):
         imgs_sr = self(imgs_lr)
         train_batches_done = batch_idx + self.current_epoch * self.train_len
 
-        if self.log_images:
+        if self.log_images_train:
             if train_batches_done % (self.args.log_every_n_steps * 5) == 0:
                 grid = self.imgs_cat(imgs_lr, imgs_hr, imgs_sr)
                 self.logger.experiment.add_image('generated images/train',
@@ -117,7 +119,7 @@ class LitTrainer(pl.LightningModule):
             pred_real = self.netD(imgs_hr).detach()
             pred_fake = self.netD(imgs_sr)
 
-            if self.gan:
+            if self.ragan:
                 pred_fake -= pred_real.mean(0, keepdim=True)
 
             # Adversarial loss
@@ -125,7 +127,7 @@ class LitTrainer(pl.LightningModule):
             # Calculate gradient penalty
             # gradient_penalty = self.gradient_penalty(imgs_hr, imgs_sr)
 
-            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + .1 * loss_adv  # + 1 * gradient_penalty
+            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_adv * loss_adv  # + 1 * gradient_penalty
 
             self.log('Step loss/generator', {'train_loss_edge': loss_edge,
                                              'train_loss_pixel': loss_pixel,
@@ -156,7 +158,7 @@ class LitTrainer(pl.LightningModule):
             pred_real = self.netD(imgs_hr)
             pred_fake = self.netD(imgs_sr.detach())
 
-            if self.gan:
+            if self.ragan:
                 pred_real, pred_fake = pred_real - pred_fake.mean(0, keepdim=True), \
                                        pred_fake - pred_real.mean(0, keepdim=True)
 
@@ -194,7 +196,7 @@ class LitTrainer(pl.LightningModule):
             pred_fake = self.netD(imgs_sr)
 
             # Relativistic average GAN
-            if self.gan:
+            if self.ragan:
                 pred_real, pred_fake = pred_real - pred_fake.mean(0, keepdim=True), \
                                        pred_fake - pred_real.mean(0, keepdim=True)
 
@@ -224,7 +226,7 @@ class LitTrainer(pl.LightningModule):
                  sync_dist=True,
                  batch_size=self.batch_size)
 
-        if self.log_images:
+        if self.log_images_val:
             val_batches_done = batch_idx + self.current_epoch * self.val_len
             if val_batches_done % self.args.log_every_n_steps == 0:
                 grid = self.imgs_cat(imgs_lr, imgs_hr, imgs_sr)
@@ -232,9 +234,9 @@ class LitTrainer(pl.LightningModule):
                                                  make_grid(torch.clamp(grid, 0, 1), nrow=4),
                                                  val_batches_done,
                                                  dataformats='CHW')
-                save_dir = os.path.join(self.logger.log_dir, 'images', 'val')
-                os.makedirs(save_dir, exist_ok=True)
-                save_image(grid, save_dir + "/%04d.png" % val_batches_done, nrow=4, normalize=False)
+                # save_dir = os.path.join(self.logger.log_dir, 'images', 'val')
+                # os.makedirs(save_dir, exist_ok=True)
+                # save_image(grid, save_dir + "/%04d.png" % val_batches_done, nrow=4, normalize=False)
 
         return g_loss
 

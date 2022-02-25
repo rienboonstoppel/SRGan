@@ -25,7 +25,6 @@ def main():
     parser.add_argument('--root_dir', default='/mnt/beta/djboonstoppel/Code', type=str)
     parser.add_argument('--name', required=True, type=str)
     parser.add_argument('--patch_size', required=True, type=int)
-    parser.add_argument('--batch_size', required=True, type=int)
 
     # --precision=16 --gpus=1 --log_every_n_steps=50 --max_epochs=-1 --max_time="00:00:00:00"
 
@@ -35,19 +34,20 @@ def main():
 
     ### Single config ###
     config = {
-        'learning_rate': 1e-4,
-        'patch_size': args.patch_size,
-        'batch_size': args.batch_size,
+        'batch_size': 256,
+        'num_filters': 64,
+        'optimizer': 'adam',
         'patients_frac': 0.5,
         'patch_overlap': 0.5,
-        'optimizer': 'adam',
         'edge_loss': 2,
         'b1': 0.9,
         'b2': 0.5,
         'alpha_content': 1,
+        'learning_rate': 1e-4,
+        'patch_size': args.patch_size,
     }
 
-    generator = GeneratorRRDB(channels=1, filters=64, num_res_blocks=1)
+    generator = GeneratorRRDB(channels=1, filters=config['num_filters'], num_res_blocks=1)
     feature_extractor = FeatureExtractor()
 
     os.makedirs(os.path.join(args.root_dir, 'log', args.name), exist_ok=True)
