@@ -37,11 +37,10 @@ def train_tune(config, args):
 
     ckpt_path = os.path.join(args.root_dir, 'ray_results', args.name, 'checkpoints')
     os.makedirs(ckpt_path, exist_ok=True)
-    ckpt_filename = 'checkpoint_{}_{}_{}_{}'.format(config['ragan'],
-                                                    config['batch_size'],
-                                                    config['optimizer'],
-                                                    config['alpha_adversarial']
-                                                    )
+    ckpt_filename = 'checkpoint_{}_{}_{}'.format(config['optimizer'],
+                                                 config['alpha_adversarial'],
+                                                 config['netD_freq'],
+                                                 )
 
     checkpoint_callback_best = ModelCheckpoint(
         monitor="val_loss",
@@ -94,6 +93,7 @@ def main():
     parser.add_argument('--name', required=True, type=str)
     parser.add_argument('--num_samples', required=True, type=int)
     parser.add_argument('--patch_size', required=True, type=int)
+    parser.add_argument('--warmup_batches', default=1000, type=int)
 
     # precision, log_every_n_steps, max_epochs, max_time
 
@@ -103,11 +103,12 @@ def main():
 
 
     config = {
-        'ragan': tune.grid_search([True, False]),
-        'batch_size': tune.grid_search([32, 256]),
+        'ragan': True,
+        'batch_size': 64,
         'num_filters': 64,
         'optimizer': tune.grid_search(['adam', 'sgd']),
-        'alpha_adversarial': tune.grid_search([0.01, 0.1, 1]),
+        'alpha_adversarial': tune.grid_search([0.1, 1]),
+        'netD_freq': tune.grid_search([1,5]),
         'patients_frac': 0.5,
         'patch_overlap': 0.5,
         'edge_loss': 2,
@@ -119,7 +120,7 @@ def main():
     }
 
     reporter = CLIReporter(
-        parameter_columns=['batch_size', 'optimizer', 'alpha_adversarial', 'ragan'],
+        parameter_columns=['optimizer', 'alpha_adversarial', 'netD_freq'],
         metric_columns=["loss", "training_iteration"])
 
     resources_per_trial = {'cpu': 8, 'gpu': 1}

@@ -50,7 +50,7 @@ def train_tune(config, args):
         dirpath=ckpt_path,
         filename=ckpt_filename + "-{epoch}",
         save_top_k=-1,
-        train_time_interval=timedelta(hours=2),
+        train_time_interval=timedelta(hours=12),
     )
 
     model = LitTrainer(netG=generator, netF=feature_extractor, args=args, config=config)
@@ -97,8 +97,8 @@ def main():
     args = parser.parse_args()
 
     config = {
-        'batch_size': tune.grid_search([32, 256]),
-        'num_filters': tune.grid_search([16, 64]),
+        'batch_size': 64,
+        'num_filters': 64,
         'optimizer': tune.grid_search(['adam', 'sgd']),
         'patients_frac': 0.5,
         'patch_overlap': 0.5,

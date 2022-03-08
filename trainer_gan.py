@@ -37,10 +37,11 @@ class LitTrainer(pl.LightningModule):
 
         self.criterion_pixel = torch.nn.L1Loss()  # method to calculate pixel differences
         self.criterion_content = torch.nn.L1Loss()  # method to calculate differences between vgg features
-        self.criterion_GAN = GANLoss(gan_mode='vanilla')  # method to calculate adversarial loss
+        self.criterion_GAN = GANLoss(gan_mode='wgan')  # method to calculate adversarial loss
         self.gradient_penalty = GradientPenalty(critic=self.netD, fake_label=1.0)
         self.criterion_edge = globals()['edge_loss' + str(config['edge_loss'])]
         self.alpha_adv = config['alpha_adversarial']
+        self.netD_freq = config['netD_freq']
 
         self.patients_frac = config['patients_frac']
         self.patch_overlap = config['patch_overlap']
@@ -125,9 +126,9 @@ class LitTrainer(pl.LightningModule):
             # Adversarial loss
             loss_adv = self.criterion_GAN(pred_fake, True)
             # Calculate gradient penalty
-            # gradient_penalty = self.gradient_penalty(imgs_hr, imgs_sr)
+            gradient_penalty = self.gradient_penalty(imgs_hr, imgs_sr)
 
-            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_adv * loss_adv  # + 1 * gradient_penalty
+            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_adv * loss_adv + 1 * gradient_penalty
 
             self.log('Step loss/generator', {'train_loss_edge': loss_edge,
                                              'train_loss_pixel': loss_pixel,
@@ -203,7 +204,7 @@ class LitTrainer(pl.LightningModule):
             # Adversarial loss
             loss_adv = self.criterion_GAN(pred_fake, True)  # Gradient Penalty cannot be calculated during validation
 
-            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + .1 * loss_adv
+            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_adv * loss_adv
 
             # ---------------------
             #  Validate Discriminator
@@ -320,4 +321,4 @@ class LitTrainer(pl.LightningModule):
              'frequency': 1},
             {'optimizer': opt_d,
              'lr_scheduler': {'scheduler': lr_scheduler(self.optimizer, gamma=0.99999)},
-             'frequency': 1})
+             'frequency': self.netD_freq})

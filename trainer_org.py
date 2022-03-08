@@ -42,7 +42,7 @@ class LitTrainer(pl.LightningModule):
         self.patch_size = config['patch_size']
         self.alpha_content = config['alpha_content']
         self.log_images_train = False
-        self.log_images_val = True
+        self.log_images_val = False
 
         if config['optimizer'] == 'sgd':
             self.optimizer = torch.optim.SGD(netG.parameters(),
