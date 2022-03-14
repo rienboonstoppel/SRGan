@@ -37,7 +37,7 @@ class LitTrainer(pl.LightningModule):
 
         self.criterion_pixel = torch.nn.L1Loss()  # method to calculate pixel differences
         self.criterion_content = torch.nn.L1Loss()  # method to calculate differences between vgg features
-        self.criterion_GAN = GANLoss(gan_mode='wgan')  # method to calculate adversarial loss
+        self.criterion_GAN = GANLoss(gan_mode='vanilla')  # method to calculate adversarial loss
         self.gradient_penalty = GradientPenalty(critic=self.netD, fake_label=1.0)
         self.criterion_edge = globals()['edge_loss' + str(config['edge_loss'])]
         self.alpha_adv = config['alpha_adversarial']
@@ -52,12 +52,21 @@ class LitTrainer(pl.LightningModule):
         self.log_images_val = True
 
         if config['optimizer'] == 'sgd':
-            self.optimizer = torch.optim.SGD(netG.parameters(),
+            self.optimizer_G = torch.optim.SGD(netG.parameters(),
                                              lr=config['learning_rate'],
                                              momentum=0.9,
                                              nesterov=True)
         elif config['optimizer'] == 'adam':
-            self.optimizer = torch.optim.Adam(netG.parameters(),
+            self.optimizer_G = torch.optim.Adam(netG.parameters(),
+                                              lr=config['learning_rate'],
+                                              betas=(config['b1'], config['b2']))
+        if config['optimizer'] == 'sgd':
+            self.optimizer_D = torch.optim.SGD(netD.parameters(),
+                                             lr=config['learning_rate'],
+                                             momentum=0.9,
+                                             nesterov=True)
+        elif config['optimizer'] == 'adam':
+            self.optimizer_D = torch.optim.Adam(netD.parameters(),
                                               lr=config['learning_rate'],
                                               betas=(config['b1'], config['b2']))
 
@@ -112,9 +121,9 @@ class LitTrainer(pl.LightningModule):
 
             loss_edge = self.criterion_edge(imgs_sr, imgs_hr)
 
-            # gen_features = self.netF(torch.repeat_interleave(imgs_sr, 3, 1))
-            # real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1)).detach()
-            # loss_content = self.criterion_content(gen_features, real_features)
+            gen_features = self.netF(torch.repeat_interleave(imgs_sr, 3, 1))
+            real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1)).detach()
+            loss_content = self.criterion_content(gen_features, real_features)
 
             # Extract validity predictions from discriminator
             pred_real = self.netD(imgs_hr).detach()
@@ -126,13 +135,13 @@ class LitTrainer(pl.LightningModule):
             # Adversarial loss
             loss_adv = self.criterion_GAN(pred_fake, True)
             # Calculate gradient penalty
-            gradient_penalty = self.gradient_penalty(imgs_hr, imgs_sr)
+            # gradient_penalty = self.gradient_penalty(imgs_hr, imgs_sr)
 
-            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_adv * loss_adv + 1 * gradient_penalty
+            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_adv * loss_adv + loss_content #+ 1 * gradient_penalty
 
             self.log('Step loss/generator', {'train_loss_edge': loss_edge,
                                              'train_loss_pixel': loss_pixel,
-                                             # 'train_loss_content': loss_content,
+                                             'train_loss_content': loss_content,
                                              'train_loss_adv': loss_adv,
                                              # 'gradient_penalty': gradient_penalty,
                                              },
@@ -188,9 +197,9 @@ class LitTrainer(pl.LightningModule):
             loss_pixel = self.criterion_pixel(imgs_sr, imgs_hr)
             loss_edge = self.criterion_edge(imgs_sr, imgs_hr)
 
-            # gen_features = self.netF(torch.repeat_interleave(imgs_sr, 3, 1))
-            # real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1))
-            # loss_content = self.criterion_content(gen_features, real_features)
+            gen_features = self.netF(torch.repeat_interleave(imgs_sr, 3, 1))
+            real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1))
+            loss_content = self.criterion_content(gen_features, real_features)
 
             # Extract validity predictions from discriminator
             pred_real = self.netD(imgs_hr)
@@ -204,7 +213,7 @@ class LitTrainer(pl.LightningModule):
             # Adversarial loss
             loss_adv = self.criterion_GAN(pred_fake, True)  # Gradient Penalty cannot be calculated during validation
 
-            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_adv * loss_adv
+            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_adv * loss_adv + loss_content
 
             # ---------------------
             #  Validate Discriminator
@@ -311,14 +320,14 @@ class LitTrainer(pl.LightningModule):
         return val_loader
 
     def configure_optimizers(self):
-        opt_g = self.optimizer
-        opt_d = self.optimizer
+        opt_g = self.optimizer_G
+        opt_d = self.optimizer_D
         lr_scheduler = torch.optim.lr_scheduler.ExponentialLR
 
         return (
             {'optimizer': opt_g,
-             'lr_scheduler': {'scheduler': lr_scheduler(self.optimizer, gamma=0.99999)},
+             'lr_scheduler': {'scheduler': lr_scheduler(self.optimizer_G, gamma=0.99999)},
              'frequency': 1},
             {'optimizer': opt_d,
-             'lr_scheduler': {'scheduler': lr_scheduler(self.optimizer, gamma=0.99999)},
+             'lr_scheduler': {'scheduler': lr_scheduler(self.optimizer_D, gamma=0.99999)},
              'frequency': self.netD_freq})

@@ -68,7 +68,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 hr_shape = (opt.hr_height, opt.hr_width)
 
 # Initialize generator and discriminator
-generator = GeneratorRRDB(opt.channels, filters=64, num_res_blocks=opt.residual_blocks).to(device)
+generator = GeneratorRRDB(opt.channels, filters=64, num_res_blocks=opt.residual_blocks, num_upsample=0).to(device)
 discriminator = Discriminator(input_shape=(opt.channels, *hr_shape)).to(device)
 feature_extractor = FeatureExtractor().to(device)
 
@@ -97,7 +97,7 @@ patch_size = opt.patch_size
 patch_overlap = .5
 
 data_path = os.path.join(root_dir, 'data')
-train_subjects = data_split('training', patients_frac=.5, root_dir=data_path)
+train_subjects = data_split('training', patients_frac=1, root_dir=data_path)
 
 training_transform = tio.Compose([
     Normalize(std=std),
@@ -149,8 +149,8 @@ for epoch in range(opt.epoch, opt.n_epochs):
         imgs_lr = Variable(imgs_lr.type(Tensor))
         imgs_hr = Variable(imgs_hr.type(Tensor))
 
-        imgs_lr = transforms.functional.resize(imgs_lr, 56,
-                                               interpolation=torchvision.transforms.InterpolationMode.BICUBIC)
+        # imgs_lr = transforms.functional.resize(imgs_lr, 16,
+        #                                        interpolation=torchvision.transforms.InterpolationMode.BICUBIC)
         # Adversarial ground truths
         valid = Variable(Tensor(np.ones((imgs_lr.size(0), *discriminator.output_shape))), requires_grad=False)
         fake = Variable(Tensor(np.zeros((imgs_lr.size(0), *discriminator.output_shape))), requires_grad=False)
@@ -251,8 +251,8 @@ for epoch in range(opt.epoch, opt.n_epochs):
 
         if batches_done % opt.sample_interval == 0:
             # Save image grid with upsampled inputs and ESRGAN outputs
-            imgs_lr = nn.functional.interpolate(imgs_lr, scale_factor=4)
-            diff = (imgs_hr - gen_hr*std) * 2 + .5
+            # imgs_lr = nn.functional.interpolate(imgs_lr, scale_factor=4)
+            diff = (imgs_hr - gen_hr) * 2 + .5
             img_grid = torch.cat((imgs_lr*std, imgs_hr*std, gen_hr*std, diff), -1)[:10]
 
             save_image(img_grid, opt.name+"/images/training/%d.png" % batches_done, nrow=1, normalize=False)

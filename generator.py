@@ -18,60 +18,54 @@ class DenseResidualBlock(nn.Module):
             return nn.Sequential(*layers)
 
         self.b1 = block(in_features=1 * filters)
-        self.b2 = block(in_features=1 * filters)
-        self.b3 = block(in_features=2 * filters)
-        self.b4 = block(in_features=3 * filters)
-        self.b5 = block(in_features=4 * filters)#, non_linearity=False)
+        self.b2 = block(in_features=2 * filters)
+        self.b3 = block(in_features=3 * filters)
+        self.b4 = block(in_features=4 * filters)
+        self.b5 = block(in_features=5 * filters, non_linearity=False)
         self.blocks = [self.b1, self.b2, self.b3, self.b4, self.b5]
 
     def forward(self, x):
         inputs = x
-        out1 = self.b1(inputs)
-        out2 = self.b2(out1)
-        cat1 = torch.cat([out2, out1], 1)
-        out3 = self.b3(cat1)
-        cat2 = torch.cat([out3, out2, out1], 1)
-        out4 = self.b4(cat2)
-        cat3 = torch.cat([out4, out3, out2, out1], 1)
-        out5 = self.b5(cat3)
-
-        return out5 + x
+        for block in self.blocks:
+            out = block(inputs)
+            inputs = torch.cat([inputs, out], 1)
+        return out.mul(self.res_scale) + x
 
 class ResidualInResidualDenseBlock(nn.Module):
-    def __init__(self, filters):
+    def __init__(self, filters, res_scale=0.2):
         super(ResidualInResidualDenseBlock, self).__init__()
-        self.drb = DenseResidualBlock(filters)
+        self.res_scale = res_scale
+        self.dense_blocks = nn.Sequential(
+            DenseResidualBlock(filters), DenseResidualBlock(filters), DenseResidualBlock(filters)
+        )
 
     def forward(self, x):
-        out1 = self.drb(x)
-        out2 = self.drb(out1)
-        out3 = self.drb(out2)
-        cat = torch.cat([out1, out2, out3], 1)
-        return cat
+        return self.dense_blocks(x).mul(self.res_scale) + x
 
 
 class GeneratorRRDB(nn.Module):
     def __init__(self, channels, filters=64, num_res_blocks=1):
         super(GeneratorRRDB, self).__init__()
 
-        # First conv layers
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(channels, filters, kernel_size=3, stride=1, padding='same'),
-            nn.LeakyReLU(),
-            nn.Conv2d(filters, filters, kernel_size=3, stride=1, padding='same'),
-            nn.LeakyReLU(),
-        )
+        # First layer
+        self.conv1 = nn.Conv2d(channels, filters, kernel_size=3, stride=1, padding=1)
         # Residual blocks
         self.res_blocks = nn.Sequential(*[ResidualInResidualDenseBlock(filters) for _ in range(num_res_blocks)])
+        # Second conv layer post residual blocks
+        self.conv2 = nn.Conv2d(filters, filters, kernel_size=3, stride=1, padding='same')
+
+
         # Final output block
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(num_res_blocks * 3 * filters, channels, kernel_size=3, stride=1, padding='same'),
-            # nn.Linear(filters, filters),
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(filters, filters, kernel_size=3, stride=1, padding=1),
+            nn.LeakyReLU(),
+            nn.Conv2d(filters, channels, kernel_size=3, stride=1, padding=1),
         )
 
     def forward(self, x):
         out1 = self.conv1(x)
-        out2 = self.res_blocks(out1)
-        out3 = self.conv2(out2)
-        out = torch.add(x, out3)
+        out = self.res_blocks(out1)
+        out2 = self.conv2(out)
+        out = torch.add(out1, out2)
+        out = self.conv3(out)
         return out

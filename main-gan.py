@@ -23,10 +23,10 @@ def main():
     parser.add_argument('--std', default=0.3548, type=float)
     parser.add_argument('--num_workers', default=4, type=int)
     parser.add_argument('--root_dir', default='/mnt/beta/djboonstoppel/Code', type=str)
-    parser.add_argument('--warmup_batches', default=50, type=int)
+    parser.add_argument('--warmup_batches', default=500, type=int)
     parser.add_argument('--name', required=True, type=str)
     parser.add_argument('--patch_size', required=True, type=int)
-    parser.add_argument('--gan', action='store_false')
+    # parser.add_argument('--gan', action='store_false')
 
     # --precision=16 --gpus=1 --log_every_n_steps=50 --max_epochs=-1 --max_time="00:00:00:00"
 
@@ -36,12 +36,13 @@ def main():
 
     ### Single config ###
     config = {
-        'ragan': False,
-        'batch_size': 256,
+        'ragan': True,
+        'batch_size': 16,
         'num_filters': 64,
         'optimizer': 'adam',
-        'alpha_adversarial': 0.1,
-        'patients_frac': 0.5,
+        'alpha_adversarial': 5e-3,
+        'netD_freq': 1,
+        'patients_frac': 1,
         'patch_overlap': 0.5,
         'edge_loss': 2,
         'b1': 0.9,
@@ -84,7 +85,7 @@ def main():
         max_time=args.max_time,
         logger=logger,
         log_every_n_steps=args.log_every_n_steps,
-        strategy=DDPPlugin(find_unused_parameters=True),
+        # strategy=DDPPlugin(find_unused_parameters=True),
         precision=args.precision,
         callbacks=[lr_monitor, checkpoint_callback_best, checkpoint_callback_time],
         enable_progress_bar=True,
