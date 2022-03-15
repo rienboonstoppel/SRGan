@@ -1,11 +1,6 @@
 import os
-import torch
-import numpy as np
-import torchio as tio
 from trainer_tune import LitTrainer
-from generator import GeneratorRRDB
-from discriminator import Discriminator
-from feature_extractor import FeatureExtractor
+from models.generator import GeneratorRRDB
 import pytorch_lightning as pl
 from argparse import ArgumentParser
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -13,9 +8,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 from ray.tune.integration.pytorch_lightning import TuneReportCallback, TuneReportCheckpointCallback
-from ray import tune
-from ray.tune import CLIReporter
-from ray.tune.schedulers import ASHAScheduler
+
 
 # print(os.getcwd())
 # torch.cuda.empty_cache()

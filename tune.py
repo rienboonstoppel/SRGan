@@ -1,10 +1,7 @@
 import os
-import torch
-import numpy as np
-import torchio as tio
 from trainer_org import LitTrainer
-from generator import GeneratorRRDB
-from feature_extractor import FeatureExtractor
+from models.generator import GeneratorRRDB
+from models.feature_extractor import FeatureExtractor
 import pytorch_lightning as pl
 from argparse import ArgumentParser
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -14,7 +11,6 @@ from ray.tune.integration.pytorch_lightning import TuneReportCallback
 from ray import tune
 from ray.tune import CLIReporter
 from datetime import timedelta
-from pytorch_lightning.plugins import DDPPlugin
 import warnings
 import json
 

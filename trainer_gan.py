@@ -121,9 +121,9 @@ class LitTrainer(pl.LightningModule):
 
             loss_edge = self.criterion_edge(imgs_sr, imgs_hr)
 
-            gen_features = self.netF(torch.repeat_interleave(imgs_sr, 3, 1))
-            real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1)).detach()
-            loss_content = self.criterion_content(gen_features, real_features)
+            # gen_features = self.netF(torch.repeat_interleave(imgs_sr, 3, 1))
+            # real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1)).detach()
+            # loss_content = self.criterion_content(gen_features, real_features)
 
             # Extract validity predictions from discriminator
             pred_real = self.netD(imgs_hr).detach()
@@ -137,11 +137,11 @@ class LitTrainer(pl.LightningModule):
             # Calculate gradient penalty
             # gradient_penalty = self.gradient_penalty(imgs_hr, imgs_sr)
 
-            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_adv * loss_adv + loss_content #+ 1 * gradient_penalty
+            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_adv * loss_adv #+ loss_content #+ 1 * gradient_penalty
 
             self.log('Step loss/generator', {'train_loss_edge': loss_edge,
                                              'train_loss_pixel': loss_pixel,
-                                             'train_loss_content': loss_content,
+                                             # 'train_loss_content': loss_content,
                                              'train_loss_adv': loss_adv,
                                              # 'gradient_penalty': gradient_penalty,
                                              },
@@ -197,9 +197,9 @@ class LitTrainer(pl.LightningModule):
             loss_pixel = self.criterion_pixel(imgs_sr, imgs_hr)
             loss_edge = self.criterion_edge(imgs_sr, imgs_hr)
 
-            gen_features = self.netF(torch.repeat_interleave(imgs_sr, 3, 1))
-            real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1))
-            loss_content = self.criterion_content(gen_features, real_features)
+            # gen_features = self.netF(torch.repeat_interleave(imgs_sr, 3, 1))
+            # real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1))
+            # loss_content = self.criterion_content(gen_features, real_features)
 
             # Extract validity predictions from discriminator
             pred_real = self.netD(imgs_hr)
@@ -213,7 +213,7 @@ class LitTrainer(pl.LightningModule):
             # Adversarial loss
             loss_adv = self.criterion_GAN(pred_fake, True)  # Gradient Penalty cannot be calculated during validation
 
-            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_adv * loss_adv + loss_content
+            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_adv * loss_adv #+ loss_content
 
             # ---------------------
             #  Validate Discriminator
