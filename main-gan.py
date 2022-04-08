@@ -1,6 +1,6 @@
 import os
 from trainer_gan import LitTrainer
-from models.generator import GeneratorRRDB
+from models.generator import GeneratorRRDB as GeneratorRRDB
 from models.discriminator import Discriminator
 from models.feature_extractor import FeatureExtractor
 import pytorch_lightning as pl
@@ -32,20 +32,21 @@ def main():
 
     ### Single config ###
     config = {
-        'ragan': True,
-        'batch_size': 16,
-        'num_filters': 64,
         'optimizer': 'adam',
-        'alpha_adversarial': 5e-3,
-        'netD_freq': 1,
-        'patients_frac': 1,
-        'patch_overlap': 0.5,
-        'edge_loss': 2,
         'b1': 0.9,
         'b2': 0.5,
-        'alpha_content': 1,
+        'batch_size': 16,
+        'num_filters': 64,
         'learning_rate': 1e-4,
         'patch_size': args.patch_size,
+        'alpha_content': 0,
+        'alpha_adversarial': 0.1,
+        'ragan': True,
+        'gan_mode': 'wgan',
+        'edge_loss': 2,
+        'netD_freq': 1,
+        'patients_frac': 0.5,
+        'patch_overlap': 0.5,
     }
 
     print_config(config, args)
@@ -70,7 +71,7 @@ def main():
         dirpath=logger.log_dir,
         filename=args.name+"-checkpoint-{epoch}",
         save_top_k=-1,
-        train_time_interval=timedelta(hours=1),
+        train_time_interval=timedelta(hours=3),
     )
 
     model = LitTrainer(netG=generator, netF=feature_extractor, netD=discriminator, args=args, config=config)

@@ -33,7 +33,7 @@ def train_tune(config, args):
 
     ckpt_path = os.path.join(args.root_dir, 'ray_results', args.name, 'checkpoints')
     os.makedirs(ckpt_path, exist_ok=True)
-    ckpt_filename = 'checkpoint_{}'.format(config['alpha_adversarial'])
+    ckpt_filename = 'checkpoint_{}_{}_{}'.format(config['optimizer'], config['alpha_content'], config['alpha_adversarial'])
 
     checkpoint_callback_best = ModelCheckpoint(
         monitor="val_loss",
@@ -96,24 +96,24 @@ def main():
 
 
     config = {
-        'ragan': True,
+        'optimizer': 'adam',
+        'b1': 0.9,
+        'b2': 0.5,
         'batch_size': 16,
         'num_filters': 64,
-        'optimizer': 'adam',
-        'alpha_adversarial': tune.grid_search([0, 0.01, 0.1, 1]),
+        'learning_rate': 1e-4,
+        'patch_size': args.patch_size,
+        'alpha_content': tune.grid_search([1,0]),
+        'alpha_adversarial': 0,
+        'ragan': True,
+        'edge_loss': 2,
         'netD_freq': 1,
         'patients_frac': 0.5,
         'patch_overlap': 0.5,
-        'edge_loss': 2,
-        'b1': 0.9,
-        'b2': 0.5,
-        'alpha_content': 1,
-        'learning_rate': 1e-4,
-        'patch_size': args.patch_size,
     }
 
     reporter = CLIReporter(
-        parameter_columns=['alpha_adversarial'],
+        parameter_columns=['optimizer', 'learning_rate', 'alpha_content', 'alpha_adversarial'],
         metric_columns=["loss", "training_iteration"])
 
     resources_per_trial = {'cpu': 8, 'gpu': 1}
