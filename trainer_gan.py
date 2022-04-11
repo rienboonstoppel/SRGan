@@ -37,13 +37,14 @@ class LitTrainer(pl.LightningModule):
 
         self.criterion_pixel = torch.nn.L1Loss()  # method to calculate pixel differences
         self.criterion_content = torch.nn.L1Loss()  # method to calculate differences between vgg features
-        # self.criterion_GAN = GANLoss(gan_mode=config['gan_mode'])  # method to calculate adversarial loss
-        self.criterion_GAN = GANLoss(gan_mode='vanilla')  # method to calculate adversarial loss
+        self.criterion_GAN = GANLoss(gan_mode=config['gan_mode'])  # method to calculate adversarial loss
+        # self.criterion_GAN = GANLoss(gan_mode='vanilla')  # method to calculate adversarial loss
         self.gradient_penalty = GradientPenalty(critic=self.netD, fake_label=1.0)
         self.criterion_edge = globals()['edge_loss' + str(config['edge_loss'])]
         self.alpha_adv = config['alpha_adversarial']
         self.netD_freq = config['netD_freq']
 
+        self.datasource = config['datasource']
         self.patients_frac = config['patients_frac']
         self.patch_overlap = config['patch_overlap']
         self.batch_size = config['batch_size']
@@ -258,8 +259,8 @@ class LitTrainer(pl.LightningModule):
     def setup(self, stage='fit'):
         args = self.args
         data_path = os.path.join(args.root_dir, 'data')
-        train_subjects = data_split('training', patients_frac=self.patients_frac, root_dir=data_path)
-        val_subjects = data_split('validation', patients_frac=self.patients_frac, root_dir=data_path)
+        train_subjects = data_split('training', patients_frac=self.patients_frac, root_dir=data_path, datasource=self.datasource)
+        val_subjects = data_split('validation', patients_frac=self.patients_frac, root_dir=data_path, datasource=self.datasource)
 
         training_transform = tio.Compose([
             Normalize(std=args.std),

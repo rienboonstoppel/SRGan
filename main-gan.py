@@ -41,10 +41,11 @@ def main():
         'patch_size': args.patch_size,
         'alpha_content': 0,
         'alpha_adversarial': 0.1,
-        'ragan': True,
-        'gan_mode': 'wgan',
+        'ragan': False,
+        'gan_mode': 'vanilla',
         'edge_loss': 2,
         'netD_freq': 1,
+        'datasource': '1mm_07mm',
         'patients_frac': 0.5,
         'patch_overlap': 0.5,
     }

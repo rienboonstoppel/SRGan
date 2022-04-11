@@ -18,29 +18,42 @@ def perc_norm(img3d, perc=95):
     return img_norm, max_val
 
 
-def slice_middle(img, numslices):
+def slice_middle(img, numslices, datasource):
     diff = (img.shape[2]-numslices)/2
-    img = img[:, :, int(np.ceil(diff)):img.shape[2]-int(np.floor(diff))]
+    if datasource == '2mm_1mm' or datasource == 'real':
+        img = img[:, :, int(np.ceil(diff)):img.shape[2]-int(np.floor(diff))]
+    elif datasource == '1mm_07mm':
+        img = img[:, :, int(np.ceil(diff))+20:img.shape[2]-int(np.floor(diff))]
     return img
 
 
 class ImagePair(object):
-    def __init__(self, number, root_dir='data', select_slices=50, simulated=True):
+    def __init__(self, number, root_dir='data', select_slices=50, simulated=True, datasource='1mm_07mm'):
         self._number = number
         self.select_slices = select_slices
         self.simulated = simulated
+        self.datasource = datasource
         if simulated:
-            self.path = root_dir + "/brain_simulated_t1w_mri"
-            self.img_fname = "23-Aug-2021_Ernst_labels_{:06d}_" \
-                             "3T_T1w_MPR1_img_act_1_contrast_1".format(self._number)
+            self.path = os.path.join(root_dir, "brain_simulated_t1w_mri", datasource)
+            if datasource == '2mm_1mm':
+                self.img_fname = "23-Aug-2021_Ernst_labels_{:06d}_" \
+                                 "3T_T1w_MPR1_img_act_1_contrast_1".format(self._number)
+            elif datasource == '1mm_07mm':
+                self.img_fname = "08-Apr-2022_Ernst_labels_{:06d}_" \
+                                 "3T_T1w_MPR1_img_act_1_contrast_1".format(self._number)
+
         else:
             self.path = root_dir + "/brain_real_t1w_mri"
             self.img_fname = "p{:01d}_reg_T1".format(self._number)
 
     def LR_HR_fnames(self):
         if self.simulated:
-            LRf = path.join(self.path, 'LR', self.img_fname + "_Res_2_2_2_img.nii.gz")
-            HRf = path.join(self.path, 'HR', self.img_fname + "_Res_1_1_2_img.nii.gz")
+            if self.dataset == '2mm_1mm':
+                LRf = path.join(self.path, 'LR', self.img_fname + "_Res_2_2_2_img.nii.gz")
+                HRf = path.join(self.path, 'HR', self.img_fname + "_Res_1_1_2_img.nii.gz")
+            elif self.dataset == '1mm_07mm':
+                LRf = path.join(self.path, 'LR', self.img_fname + "_Res_1_1_1_img.nii.gz")
+                HRf = path.join(self.path, 'HR', self.img_fname + "_Res_0.7_0.7_1_img.nii.gz")
         else:
             LRf = path.join(self.path, 'LR', self.img_fname + ".nii.gz")
             HRf = path.join(self.path, 'GT', self.img_fname + ".nii.gz")
@@ -53,10 +66,9 @@ class ImagePair(object):
 
     def subject(self):
         self.to_nifty()
-
         if self.select_slices is not None:
-            LR = slice_middle(self.LR.get_fdata(), self.select_slices)
-            HR = slice_middle(self.HR.get_fdata(), self.select_slices)
+            LR = slice_middle(self.LR.get_fdata(), self.select_slices, datasource=self.datasource)
+            HR = slice_middle(self.HR.get_fdata(), self.select_slices, datasource=self.datasource)
         else:
             LR = self.LR.get_fdata()
             HR = self.LR.get_fdata()
@@ -70,28 +82,80 @@ class ImagePair(object):
         )
         return subject
 
-    def info(self):
+class RealImage(object):
+    def __init__(self, number, root_dir='data', select_slices=50):
+        self._number = number
+        self.select_slices = select_slices
+        self.path = root_dir + "/brain_real_t1w_mri"
+        self.img_fname = "p{:01d}_reg_T1".format(self._number)
+
+    def fnames(self):
+        LRf = path.join(self.path, 'LR', self.img_fname + ".nii.gz")
+        NNf = path.join(self.path, 'Interpolation', 'nn', self.img_fname + ".nii.gz")
+        CBf = path.join(self.path, 'Interpolation', 'cubic', self.img_fname + ".nii.gz")
+        GTf = path.join(self.path, 'GT', self.img_fname + ".nii.gz")
+        return LRf, NNf, CBf, GTf
+
+    def to_nifty(self):
+        LR_fname, NN_fname, CB_fname, GT_fname = self.fnames()
+        self.LR = nib.load(LR_fname)
+        self.NN = nib.load(NN_fname)
+        self.CB = nib.load(CB_fname)
+        self.GT = nib.load(GT_fname)
+
+    def subject(self):
         self.to_nifty()
-        img_info = {
-            'LR': {
-                'header': self.LR.header,
-                'scaling': self.scaling_LR,
-            },
-            'HR': {
-                'header': self.HR.header,
-                'scaling': self.scaling_HR,
-            }
-        }
-        return img_info
+        if self.select_slices is not None:
+            LR = slice_middle(self.LR.get_fdata(), self.select_slices, datasource='real')
+            NN = slice_middle(self.NN.get_fdata(), self.select_slices, datasource='real')
+            CB = slice_middle(self.CB.get_fdata(), self.select_slices, datasource='real')
+            GT = slice_middle(self.GT.get_fdata(), self.select_slices, datasource='real')
+        else:
+            LR = self.LR.get_fdata()
+            NN = self.NN.get_fdata()
+            CB = self.CB.get_fdata()
+            GT = self.GT.get_fdata()
+
+        LR_norm, self.scaling_LR = perc_norm(LR)
+        NN_norm, self.scaling_NN = perc_norm(NN)
+        CB_norm, self.scaling_CB = perc_norm(CB)
+        GT_norm, self.scaling_GT = perc_norm(GT)
+
+        subject = tio.Subject(
+            LR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(LR_norm, 0))),
+            NN=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(NN_norm, 0))),
+            Cubic=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(CB_norm, 0))),
+            GT=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(GT_norm, 0))),
+        )
+        return subject
+
+    # def info(self):
+    #     self.to_nifty()
+    #     img_info = {
+    #         'LR': {
+    #             'header': self.LR.header,
+    #             'scaling': self.scaling_LR,
+    #         },
+    #         'HR': {
+    #             'header': self.HR.header,
+    #             'scaling': self.scaling_HR,
+    #         }
+    #     }
+    #     return img_info
 
 
-def data_split(dataset, patients_frac=1, train_frac=0.7, val_frac=.15, test_frac=.15, numslices=50, root_dir='data',
+def data_split(dataset, datasource='1mm_07mm', patients_frac=1, train_frac=0.7, val_frac=.15, test_frac=.15, numslices=50, root_dir='data',
                randomseed=21011998, simulated=True):
     # define paths
     random.seed(randomseed)
-    path   = root_dir + "/brain_simulated_t1w_mri/HR/"
-    fnames = glob(path + "*.nii.gz")
-    ids    = sorted(list(map(int, [(fnames[i][-60:-54]) for i in range(len(fnames))])))
+    if datasource == '2mm_1mm':
+        path  = os.path.join(root_dir, "brain_simulated_t1w_mri", datasource, 'HR/')
+        fnames = glob(path + "*.nii.gz")
+        ids    = sorted(list(map(int, [(fnames[i][-60:-54]) for i in range(len(fnames))])))
+    elif datasource == '1mm_07mm':
+        path  = os.path.join(root_dir, "brain_simulated_t1w_mri", datasource, 'HR/')
+        fnames = glob(path + "*.nii.gz")
+        ids    = sorted(list(map(int, [(fnames[i][-64:-58]) for i in range(len(fnames))])))
     random.shuffle(ids)
 
     # define data splits
@@ -112,7 +176,7 @@ def data_split(dataset, patients_frac=1, train_frac=0.7, val_frac=.15, test_frac
     # for num in tqdm(ids_split, desc='Load {} set\t'.format(dataset), bar_format='{l_bar}{bar:15}{r_bar}{bar:-15b}',
     #                 leave=True, position=0):
     for num in ids_split:
-        data = ImagePair(num, root_dir=root_dir, select_slices=numslices, simulated=simulated)
+        data = ImagePair(num, root_dir=root_dir, select_slices=numslices, simulated=simulated, dataset=datasource)
         subjects.append(data.subject())
     return subjects
 
@@ -127,7 +191,7 @@ def real_data(numslices=45, root_dir='data', simulated=False):
     print('Loading real dataset...')
 
     for num in ids:
-        data = ImagePair(num, root_dir=root_dir, select_slices=numslices, simulated=simulated)
+        data = RealImage(num, root_dir=root_dir, select_slices=numslices)
         subjects.append(data.subject())
     return subjects
 
