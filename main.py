@@ -1,6 +1,6 @@
 import os
 from trainer_org import LitTrainer
-from models.generator import GeneratorRRDB
+from models.generator_old import GeneratorRRDB
 from models.feature_extractor import FeatureExtractor
 import pytorch_lightning as pl
 from argparse import ArgumentParser
@@ -9,9 +9,8 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.plugins import DDPPlugin
 from datetime import timedelta
+from utils import print_config
 
-# print(os.getcwd())
-# torch.cuda.empty_cache()
 
 def main():
     pl.seed_everything(21011998)
@@ -31,7 +30,7 @@ def main():
 
     ### Single config ###
     config = {
-        'batch_size': 256,
+        'batch_size': 16,
         'num_filters': 64,
         'optimizer': 'adam',
         'patients_frac': 0.5,
@@ -42,13 +41,18 @@ def main():
         'alpha_content': 1,
         'learning_rate': 1e-4,
         'patch_size': args.patch_size,
+        'datasource': '2mm_1mm',
+
     }
+
+    print_config(config, args)
 
     generator = GeneratorRRDB(channels=1, filters=config['num_filters'], num_res_blocks=1)
     feature_extractor = FeatureExtractor()
 
     os.makedirs(os.path.join(args.root_dir, 'log', args.name), exist_ok=True)
     logger = TensorBoardLogger('log', name=args.name, default_hp_metric=False)
+
     lr_monitor = LearningRateMonitor(logging_interval='step')
     checkpoint_callback_best = ModelCheckpoint(
         monitor="val_loss",
@@ -59,7 +63,7 @@ def main():
     )
 
     checkpoint_callback_time = ModelCheckpoint(
-        dirpath=os.path.join(args.root_dir, 'log', args.name),
+        dirpath=logger.log_dir,
         filename=args.name+"-checkpoint-{epoch}",
         save_top_k=-1,
         train_time_interval=timedelta(hours=2),
@@ -73,7 +77,7 @@ def main():
         max_time=args.max_time,
         logger=logger,
         log_every_n_steps=args.log_every_n_steps,
-        strategy=DDPPlugin(find_unused_parameters=False),
+        # strategy=DDPPlugin(find_unused_parameters=True),
         precision=args.precision,
         callbacks=[lr_monitor, checkpoint_callback_best, checkpoint_callback_time],
         enable_progress_bar=True,
@@ -83,6 +87,6 @@ def main():
         model,
     )
 
-
 if __name__ == '__main__':
     main()
+

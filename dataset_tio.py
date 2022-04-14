@@ -28,7 +28,7 @@ def slice_middle(img, numslices, datasource):
 
 
 class ImagePair(object):
-    def __init__(self, number, root_dir='data', select_slices=50, simulated=True, datasource='1mm_07mm'):
+    def __init__(self, number, root_dir='data', select_slices=50, simulated=True, datasource='2mm_1mm'):
         self._number = number
         self.select_slices = select_slices
         self.simulated = simulated
@@ -48,10 +48,10 @@ class ImagePair(object):
 
     def LR_HR_fnames(self):
         if self.simulated:
-            if self.dataset == '2mm_1mm':
+            if self.datasource == '2mm_1mm':
                 LRf = path.join(self.path, 'LR', self.img_fname + "_Res_2_2_2_img.nii.gz")
                 HRf = path.join(self.path, 'HR', self.img_fname + "_Res_1_1_2_img.nii.gz")
-            elif self.dataset == '1mm_07mm':
+            elif self.datasource == '1mm_07mm':
                 LRf = path.join(self.path, 'LR', self.img_fname + "_Res_1_1_1_img.nii.gz")
                 HRf = path.join(self.path, 'HR', self.img_fname + "_Res_0.7_0.7_1_img.nii.gz")
         else:
@@ -81,6 +81,20 @@ class ImagePair(object):
             HR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(HR_norm,0))),
         )
         return subject
+
+    def info(self):
+        self.to_nifty()
+        img_info = {
+            'LR': {
+                'header': self.LR.header,
+                'scaling': self.scaling_LR,
+            },
+            'HR': {
+                'header': self.HR.header,
+                'scaling': self.scaling_HR,
+            }
+        }
+        return img_info
 
 class RealImage(object):
     def __init__(self, number, root_dir='data', select_slices=50):
@@ -176,7 +190,7 @@ def data_split(dataset, datasource='1mm_07mm', patients_frac=1, train_frac=0.7, 
     # for num in tqdm(ids_split, desc='Load {} set\t'.format(dataset), bar_format='{l_bar}{bar:15}{r_bar}{bar:-15b}',
     #                 leave=True, position=0):
     for num in ids_split:
-        data = ImagePair(num, root_dir=root_dir, select_slices=numslices, simulated=simulated, dataset=datasource)
+        data = ImagePair(num, root_dir=root_dir, select_slices=numslices, simulated=simulated, datasource=datasource)
         subjects.append(data.subject())
     return subjects
 

@@ -36,6 +36,7 @@ class LitTrainer(pl.LightningModule):
         self.criterion_content = torch.nn.L1Loss()  # method to calculate differences between vgg features
         self.criterion_edge = globals()['edge_loss' + str(config['edge_loss'])]
 
+        self.datasource = config['datasource']
         self.patients_frac = config['patients_frac']
         self.patch_overlap = config['patch_overlap']
         self.batch_size = config['batch_size']
@@ -77,16 +78,16 @@ class LitTrainer(pl.LightningModule):
         loss_edge = self.criterion_edge(imgs_sr, imgs_hr)
         loss_pixel = self.criterion_pixel(imgs_sr, imgs_hr)
 
-        # gen_features = self.netF(torch.repeat_interleave(imgs_sr, 3, 1))
-        # real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1)).detach()
-        # loss_content = self.criterion_content(gen_features, real_features)
+        gen_features = self.netF(torch.repeat_interleave(imgs_sr, 3, 1))
+        real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1)).detach()
+        loss_content = self.criterion_content(gen_features, real_features)
 
-        g_loss = 0.3 * loss_edge + 0.7 * loss_pixel #+ self.alpha_content * loss_content
+        g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_content * loss_content
 
         self.log('Step loss/generator', {'train_loss_edge': loss_edge,
                                          'train_loss_pixel': loss_pixel,
-                                         # 'train_loss_content': loss_content,
-                                         }, on_step=True, on_epoch=False, sync_dist=True, prog_bar=True,
+                                         'train_loss_content': loss_content,
+                                         }, on_step=True, on_epoch=False, sync_dist=True, prog_bar=False,
                  batch_size=self.batch_size)
 
         self.log('Epoch loss/generator', {'Train': g_loss,
@@ -110,11 +111,11 @@ class LitTrainer(pl.LightningModule):
             loss_edge = self.criterion_edge(imgs_sr, imgs_hr)
             loss_pixel = self.criterion_pixel(imgs_sr, imgs_hr)
 
-            # gen_features = self.netF(torch.repeat_interleave(imgs_sr, 3, 1))
-            # real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1)).detach()
-            # loss_content = self.criterion_content(gen_features, real_features)
+            gen_features = self.netF(torch.repeat_interleave(imgs_sr, 3, 1))
+            real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1)).detach()
+            loss_content = self.criterion_content(gen_features, real_features)
 
-            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel #+ self.alpha_content * loss_content
+            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_content * loss_content
 
             self.log('Epoch loss/generator', {'Val': g_loss}, on_step=False, on_epoch=True, sync_dist=True,
                      batch_size=self.batch_size)
@@ -137,8 +138,8 @@ class LitTrainer(pl.LightningModule):
     def setup(self, stage='fit'):
         args = self.args
         data_path = os.path.join(args.root_dir, 'data')
-        train_subjects = data_split('training', patients_frac=self.patients_frac, root_dir=data_path)
-        val_subjects = data_split('validation', patients_frac=self.patients_frac, root_dir=data_path)
+        train_subjects = data_split('training', patients_frac=self.patients_frac, root_dir=data_path, datasource=self.datasource)
+        val_subjects = data_split('validation', patients_frac=self.patients_frac, root_dir=data_path, datasource=self.datasource)
 
         training_transform = tio.Compose([
             Normalize(std=args.std),

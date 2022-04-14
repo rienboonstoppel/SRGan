@@ -3,7 +3,7 @@ import numpy as np
 import os
 
 def print_config(config, args):
-    print_args =['std', 'num_workers', 'root_dir', 'warmup_batches', 'name', 'precision', 'gpus', 'max_epochs', 'max_time']
+    print_args =['std', 'num_workers', 'root_dir', 'name', 'precision', 'gpus', 'max_epochs', 'max_time'] #'warmup_batches'
 
     print("{:<15}| {:<10}".format('Var', 'Value'))
     print('-'*22)
@@ -54,3 +54,14 @@ def save_subject(subject, header, pref, std, max_vals, source, path='output'):
                   fname = os.path.join(path, '{}_SR.nii.gz'.format(pref)),
                   source = source,
                   )
+
+def save_subject_all(subject, header, pref, std, max_vals, source, path='output'):
+    for key in subject.keys():
+        print(key)
+        save_to_nifti(img = subject[key],
+                      header = header,
+                      std = std,
+                      max_val = max_vals[key[:2]],
+                      fname = os.path.join(path, '{}_{}.nii.gz'.format(pref, key)),
+                      source = source,
+                      )
