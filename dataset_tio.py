@@ -28,50 +28,52 @@ def slice_middle(img, numslices, datasource):
 
 
 class ImagePair(object):
-    def __init__(self, number, root_dir='data', select_slices=50, simulated=True, datasource='2mm_1mm'):
+    def __init__(self, number, root_dir='data', select_slices=50, datasource='2mm_1mm'):
         self._number = number
         self.select_slices = select_slices
-        self.simulated = simulated
         self.datasource = datasource
-        if simulated:
-            self.path = os.path.join(root_dir, "brain_simulated_t1w_mri", datasource)
-            if datasource == '2mm_1mm':
-                self.img_fname = "23-Aug-2021_Ernst_labels_{:06d}_" \
-                                 "3T_T1w_MPR1_img_act_1_contrast_1".format(self._number)
-            elif datasource == '1mm_07mm':
-                self.img_fname = "08-Apr-2022_Ernst_labels_{:06d}_" \
-                                 "3T_T1w_MPR1_img_act_1_contrast_1".format(self._number)
+        self.path = os.path.join(root_dir, "brain_simulated_t1w_mri", datasource)
+        if datasource == '2mm_1mm':
+            self.img_fname = "23-Aug-2021_Ernst_labels_{:06d}_" \
+                             "3T_T1w_MPR1_img_act_1_contrast_1".format(self._number)
+        elif datasource == '1mm_07mm':
+            self.img_fname = "08-Apr-2022_Ernst_labels_{:06d}_" \
+                             "3T_T1w_MPR1_img_act_1_contrast_1".format(self._number)
 
+    def LR_HR_fnames(self, mask=False):
+        if mask:
+            suff = 'msk'
         else:
-            self.path = root_dir + "/brain_real_t1w_mri"
-            self.img_fname = "p{:01d}_reg_T1".format(self._number)
+            suff = 'img'
 
-    def LR_HR_fnames(self):
-        if self.simulated:
-            if self.datasource == '2mm_1mm':
-                LRf = path.join(self.path, 'LR', self.img_fname + "_Res_2_2_2_img.nii.gz")
-                HRf = path.join(self.path, 'HR', self.img_fname + "_Res_1_1_2_img.nii.gz")
-            elif self.datasource == '1mm_07mm':
-                LRf = path.join(self.path, 'LR', self.img_fname + "_Res_1_1_1_img.nii.gz")
-                HRf = path.join(self.path, 'HR', self.img_fname + "_Res_0.7_0.7_1_img.nii.gz")
-        else:
-            LRf = path.join(self.path, 'LR', self.img_fname + ".nii.gz")
-            HRf = path.join(self.path, 'GT', self.img_fname + ".nii.gz")
+        if self.datasource == '2mm_1mm':
+            LRf = path.join(self.path, 'LR_' + suff, self.img_fname + "_Res_2_2_2_" + suff + ".nii.gz")
+            HRf = path.join(self.path, 'HR_' + suff, self.img_fname + "_Res_1_1_2_" + suff + ".nii.gz")
+        elif self.datasource == '1mm_07mm':
+            LRf = path.join(self.path, 'LR_' + suff, self.img_fname + "_Res_1_1_1_" + suff + ".nii.gz")
+            HRf = path.join(self.path, 'HR_' + suff, self.img_fname + "_Res_0.7_0.7_1_" + suff + ".nii.gz")
         return LRf, HRf
 
     def to_nifty(self):
         LR_fname, HR_fname = self.LR_HR_fnames()
+        LR_msk_fname, HR_msk_fname = self.LR_HR_fnames(mask=True)
         self.LR = nib.load(LR_fname)
         self.HR = nib.load(HR_fname)
+        self.LR_msk = nib.load(LR_msk_fname)
+        self.HR_msk = nib.load(HR_msk_fname)
 
     def subject(self):
         self.to_nifty()
         if self.select_slices is not None:
             LR = slice_middle(self.LR.get_fdata(), self.select_slices, datasource=self.datasource)
             HR = slice_middle(self.HR.get_fdata(), self.select_slices, datasource=self.datasource)
+            LR_msk = slice_middle(self.LR_msk.get_fdata(), self.select_slices, datasource=self.datasource)
+            HR_msk = slice_middle(self.HR_msk.get_fdata(), self.select_slices, datasource=self.datasource)
         else:
             LR = self.LR.get_fdata()
             HR = self.LR.get_fdata()
+            LR_msk = self.LR_msk.get_fdata()
+            HR_msk = self.HR_msk.get_fdata()
 
         LR_norm, self.scaling_LR = perc_norm(LR)
         HR_norm, self.scaling_HR = perc_norm(HR)
@@ -79,6 +81,8 @@ class ImagePair(object):
         subject = tio.Subject(
             LR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(LR_norm,0))),
             HR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(HR_norm,0))),
+            LR_msk=tio.LabelMap(tensor=torch.from_numpy(np.expand_dims(LR_msk, 0))),
+            HR_msk=tio.LabelMap(tensor=torch.from_numpy(np.expand_dims(HR_msk, 0))),
         )
         return subject
 
@@ -102,33 +106,38 @@ class RealImage(object):
         self.select_slices = select_slices
         self.path = root_dir + "/brain_real_t1w_mri"
         self.img_fname = "p{:01d}_reg_T1".format(self._number)
+        self.msk_fname = "p{:01d}_segm".format(self._number)
 
     def fnames(self):
         LRf = path.join(self.path, 'LR', self.img_fname + ".nii.gz")
         NNf = path.join(self.path, 'Interpolation', 'nn', self.img_fname + ".nii.gz")
         CBf = path.join(self.path, 'Interpolation', 'cubic', self.img_fname + ".nii.gz")
         GTf = path.join(self.path, 'GT', self.img_fname + ".nii.gz")
-        return LRf, NNf, CBf, GTf
+        MSKf = path.join(self.path, 'MSK', self.msk_fname + ".nii.gz")
+        return LRf, NNf, CBf, GTf, MSKf
 
     def to_nifty(self):
-        LR_fname, NN_fname, CB_fname, GT_fname = self.fnames()
+        LR_fname, NN_fname, CB_fname, GT_fname, MSK_fname = self.fnames()
         self.LR = nib.load(LR_fname)
         self.NN = nib.load(NN_fname)
         self.CB = nib.load(CB_fname)
         self.GT = nib.load(GT_fname)
+        self.MSK = nib.load(MSK_fname)
 
     def subject(self):
         self.to_nifty()
         if self.select_slices is not None:
             LR = slice_middle(self.LR.get_fdata(), self.select_slices, datasource='real')
             NN = slice_middle(self.NN.get_fdata(), self.select_slices, datasource='real')
-            CB = slice_middle(self.CB.get_fdata(), self.select_slices, datasource='real')
+            CB = slice_middle(self.CB.get_fdata()-self.CB.get_fdata()[0,0,0], self.select_slices, datasource='real')
             GT = slice_middle(self.GT.get_fdata(), self.select_slices, datasource='real')
+            MSK = slice_middle(self.MSK.get_fdata(), self.select_slices, datasource='real')
         else:
             LR = self.LR.get_fdata()
             NN = self.NN.get_fdata()
-            CB = self.CB.get_fdata()
+            CB = self.CB.get_fdata()-self.CB.get_fdata()[0,0,0]
             GT = self.GT.get_fdata()
+            MSK = self.MSK.get_fdata()
 
         LR_norm, self.scaling_LR = perc_norm(LR)
         NN_norm, self.scaling_NN = perc_norm(NN)
@@ -140,6 +149,7 @@ class RealImage(object):
             NN=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(NN_norm, 0))),
             Cubic=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(CB_norm, 0))),
             GT=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(GT_norm, 0))),
+            MSK=tio.LabelMap(tensor=torch.from_numpy(np.expand_dims(MSK, 0))),
         )
         return subject
 
@@ -159,15 +169,15 @@ class RealImage(object):
 
 
 def data_split(dataset, datasource='1mm_07mm', patients_frac=1, train_frac=0.7, val_frac=.15, test_frac=.15, numslices=50, root_dir='data',
-               randomseed=21011998, simulated=True):
+               randomseed=21011998):
     # define paths
     random.seed(randomseed)
     if datasource == '2mm_1mm':
-        path  = os.path.join(root_dir, "brain_simulated_t1w_mri", datasource, 'HR/')
+        path  = os.path.join(root_dir, "brain_simulated_t1w_mri", datasource, 'HR_img/')
         fnames = glob(path + "*.nii.gz")
         ids    = sorted(list(map(int, [(fnames[i][-60:-54]) for i in range(len(fnames))])))
     elif datasource == '1mm_07mm':
-        path  = os.path.join(root_dir, "brain_simulated_t1w_mri", datasource, 'HR/')
+        path  = os.path.join(root_dir, "brain_simulated_t1w_mri", datasource, 'HR_img/')
         fnames = glob(path + "*.nii.gz")
         ids    = sorted(list(map(int, [(fnames[i][-64:-58]) for i in range(len(fnames))])))
     random.shuffle(ids)
@@ -190,7 +200,7 @@ def data_split(dataset, datasource='1mm_07mm', patients_frac=1, train_frac=0.7, 
     # for num in tqdm(ids_split, desc='Load {} set\t'.format(dataset), bar_format='{l_bar}{bar:15}{r_bar}{bar:-15b}',
     #                 leave=True, position=0):
     for num in ids_split:
-        data = ImagePair(num, root_dir=root_dir, select_slices=numslices, simulated=simulated, datasource=datasource)
+        data = ImagePair(num, root_dir=root_dir, select_slices=numslices, datasource=datasource)
         subjects.append(data.subject())
     return subjects
 
