@@ -71,7 +71,7 @@ class ImagePair(object):
             HR_msk = slice_middle(self.HR_msk.get_fdata(), self.select_slices, datasource=self.datasource)
         else:
             LR = self.LR.get_fdata()
-            HR = self.LR.get_fdata()
+            HR = self.HR.get_fdata()
             LR_msk = self.LR_msk.get_fdata()
             HR_msk = self.HR_msk.get_fdata()
 
