@@ -11,7 +11,6 @@ import torchio as tio
 from torchio.data.subject import Subject
 from torchio.transforms.intensity_transform import IntensityTransform
 
-
 def perc_norm(img3d, perc=95):
     max_val = np.percentile(img3d, perc)
     img_norm = img3d.astype(float)  / max_val.astype(np.float32)
@@ -153,19 +152,19 @@ class RealImage(object):
         )
         return subject
 
-    # def info(self):
-    #     self.to_nifty()
-    #     img_info = {
-    #         'LR': {
-    #             'header': self.LR.header,
-    #             'scaling': self.scaling_LR,
-    #         },
-    #         'HR': {
-    #             'header': self.HR.header,
-    #             'scaling': self.scaling_HR,
-    #         }
-    #     }
-    #     return img_info
+    def info(self):
+        self.to_nifty()
+        img_info = {
+            'LR': {
+                'header': self.LR.header,
+                'scaling': self.scaling_LR,
+            },
+            'GT': {
+                'header': self.GT.header,
+                'scaling': self.scaling_GT,
+            }
+        }
+        return img_info
 
 
 def data_split(dataset, datasource='1mm_07mm', patients_frac=1, train_frac=0.7, val_frac=.15, test_frac=.15, numslices=50, root_dir='data',

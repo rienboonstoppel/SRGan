@@ -55,6 +55,29 @@ def save_subject(subject, header, pref, std, max_vals, source, path='output'):
                   source = source,
                   )
 
+def save_subject_real(subject, header, pref, std, max_vals, source, path='output'):
+    save_to_nifti(img = subject['LR'],
+                  header = header,
+                  std = std,
+                  max_val = max_vals[0],
+                  fname = os.path.join(path, '{}_LR.nii.gz'.format(pref)),
+                  source = source,
+                  )
+    save_to_nifti(img = subject['GT'],
+                  header = header,
+                  std = std,
+                  max_val = max_vals[1],
+                  fname = os.path.join(path, '{}_GT.nii.gz'.format(pref)),
+                  source = source,
+                  )
+    save_to_nifti(img = subject['SR'],
+                  header = header,
+                  std = std,
+                  max_val = max_vals[2],
+                  fname = os.path.join(path, '{}_SR.nii.gz'.format(pref)),
+                  source = source,
+                  )
+
 def save_subject_all(subject, header, pref, std, max_vals, source, path='output'):
     for key in subject.keys():
         print(key)

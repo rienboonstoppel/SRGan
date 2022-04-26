@@ -1,6 +1,7 @@
 import os
 from trainer_gan import LitTrainer
 from models.generator import GeneratorRRDB as GeneratorRRDB
+from models.generator_marcel import DeepUResnet
 from models.discriminator import Discriminator
 from models.feature_extractor import FeatureExtractor
 import pytorch_lightning as pl
@@ -37,7 +38,7 @@ def main():
         'b2': 0.5,
         'batch_size': 16,
         'num_filters': 64,
-        'learning_rate': 1e-4,
+        'learning_rate': 1e-5,
         'patch_size': args.patch_size,
         'alpha_content': 1,
         'alpha_adversarial': 0.1,
@@ -46,13 +47,14 @@ def main():
         'edge_loss': 2,
         'netD_freq': 1,
         'datasource': '2mm_1mm',
-        'patients_frac': 0.5,
+        'patients_frac': 1,
         'patch_overlap': 0.5,
     }
 
     print_config(config, args)
 
     generator = GeneratorRRDB(channels=1, filters=config['num_filters'], num_res_blocks=1)
+    # generator = DeepUResnet(nrfilters=config['num_filters'])
     discriminator = Discriminator(input_shape=(1, config['patch_size'], config['patch_size']))
     feature_extractor = FeatureExtractor()
 

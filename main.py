@@ -1,6 +1,7 @@
 import os
 from trainer_org import LitTrainer
 from models.generator_old import GeneratorRRDB
+from models.generator_marcel import DeepUResnet
 from models.feature_extractor import FeatureExtractor
 import pytorch_lightning as pl
 from argparse import ArgumentParser
@@ -33,13 +34,13 @@ def main():
         'batch_size': 16,
         'num_filters': 64,
         'optimizer': 'adam',
-        'patients_frac': 0.5,
+        'patients_frac': 1,
         'patch_overlap': 0.5,
         'edge_loss': 2,
         'b1': 0.9,
         'b2': 0.5,
         'alpha_content': 1,
-        'learning_rate': 1e-4,
+        'learning_rate': 1e-5,
         'patch_size': args.patch_size,
         'datasource': '2mm_1mm',
 
@@ -47,7 +48,9 @@ def main():
 
     print_config(config, args)
 
-    generator = GeneratorRRDB(channels=1, filters=config['num_filters'], num_res_blocks=1)
+    # generator = GeneratorRRDB(channels=1, filters=config['num_filters'], num_res_blocks=1)
+    generator = DeepUResnet(nrfilters=config['num_filters'])
+
     feature_extractor = FeatureExtractor()
 
     os.makedirs(os.path.join(args.root_dir, 'log', args.name), exist_ok=True)
