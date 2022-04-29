@@ -55,21 +55,21 @@ class LitTrainer(pl.LightningModule):
 
         if config['optimizer'] == 'sgd':
             self.optimizer_G = torch.optim.SGD(netG.parameters(),
-                                             lr=config['learning_rate'],
+                                             lr=config['learning_rate_G'],
                                              momentum=0.9,
                                              nesterov=True)
         elif config['optimizer'] == 'adam':
             self.optimizer_G = torch.optim.Adam(netG.parameters(),
-                                              lr=config['learning_rate'],
+                                              lr=config['learning_rate_G'],
                                               betas=(config['b1'], config['b2']))
         if config['optimizer'] == 'sgd':
             self.optimizer_D = torch.optim.SGD(netD.parameters(),
-                                             lr=config['learning_rate'],
+                                             lr=config['learning_rate_D'],
                                              momentum=0.9,
                                              nesterov=True)
         elif config['optimizer'] == 'adam':
             self.optimizer_D = torch.optim.Adam(netD.parameters(),
-                                              lr=config['learning_rate'],
+                                              lr=config['learning_rate_D'],
                                               betas=(config['b1'], config['b2']))
 
     def imgs_cat(self, imgs_lr, imgs_hr, imgs_sr):
@@ -199,8 +199,8 @@ class LitTrainer(pl.LightningModule):
             loss_pixel = self.criterion_pixel(imgs_sr, imgs_hr)
             loss_edge = self.criterion_edge(imgs_sr, imgs_hr)
 
-            gen_features = self.netF(torch.repeat_interleave(imgs_sr, 3, 1))
-            real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1))
+            gen_features = self.netF(imgs_sr.repeat(1, 3, 1 ,1))
+            real_features = self.netF(imgs_hr.repeat(1, 3, 1 ,1))
             loss_content = self.criterion_content(gen_features, real_features)
 
             # Extract validity predictions from discriminator
@@ -259,19 +259,27 @@ class LitTrainer(pl.LightningModule):
     def setup(self, stage='fit'):
         args = self.args
         data_path = os.path.join(args.root_dir, 'data')
-        train_subjects = data_split('training', patients_frac=self.patients_frac, root_dir=data_path, datasource=self.datasource)
-        val_subjects = data_split('validation', patients_frac=self.patients_frac, root_dir=data_path, datasource=self.datasource)
-
+        train_subjects = data_split('training',
+                                    patients_frac=self.patients_frac,
+                                    root_dir=data_path,
+                                    datasource=self.datasource,
+                                    numslices=None)
+        val_subjects = data_split('validation',
+                                  patients_frac=self.patients_frac,
+                                  root_dir=data_path,
+                                  datasource=self.datasource,
+                                  numslices=None)
         training_transform = tio.Compose([
             Normalize(std=args.std),
             # tio.RandomNoise(p=0.5),
+            tio.RandomFlip(axes=(0, 1), flip_probability=1),
             tio.RandomFlip(axes=(0, 1), flip_probability=0.9),
-            tio.RandomAffine(degrees=(0, 0, 0, 0, 0, 360),
-                             default_pad_value=0,
-                             scales=0,
-                             translation=0,
-                             isotropic=True
-                             )
+            # tio.RandomAffine(degrees=(0, 0, 0, 0, 0, 360),
+            #                  default_pad_value=0,
+            #                  scales=0,
+            #                  translation=0,
+            #                  isotropic=True
+            #                  )
         ])
 
         self.training_set = tio.SubjectsDataset(

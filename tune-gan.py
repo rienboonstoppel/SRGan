@@ -22,7 +22,7 @@ warnings.filterwarnings('ignore', '.*The dataloader, .*')
 
 
 def train_tune(config, args):
-    generator = GeneratorRRDB(channels=1, filters=config['num_filters'], num_res_blocks=1)
+    generator = GeneratorRRDB(channels=1, filters=config['num_filters'], num_res_blocks=config['num_res_blocks'])
     discriminator = Discriminator(input_shape=(1, config['patch_size'], config['patch_size']))
     feature_extractor = FeatureExtractor()
 
@@ -33,7 +33,7 @@ def train_tune(config, args):
 
     ckpt_path = os.path.join(args.root_dir, 'ray_results', args.name, 'checkpoints')
     os.makedirs(ckpt_path, exist_ok=True)
-    ckpt_filename = 'checkpoint_{}_{}_{}'.format(config['optimizer'], config['alpha_content'], config['alpha_adversarial'])
+    ckpt_filename = 'checkpoint_{}_{}'.format(config['num_res_blocks'], config['learning_rate_D'])
 
     checkpoint_callback_best = ModelCheckpoint(
         monitor="val_loss",
@@ -47,7 +47,7 @@ def train_tune(config, args):
         dirpath=ckpt_path,
         filename=ckpt_filename + "-{epoch}",
         save_top_k=-1,
-        train_time_interval=timedelta(hours=2),
+        train_time_interval=timedelta(hours=3),
     )
 
     model = LitTrainer(netG=generator, netF=feature_extractor, netD=discriminator, args=args, config=config)
@@ -101,19 +101,22 @@ def main():
         'b2': 0.5,
         'batch_size': 16,
         'num_filters': 64,
-        'learning_rate': 1e-4,
+        'learning_rate_G': 1e-4,
+        'learning_rate_D': tune.grid_search([1e-3, 1e-4, 1e-5]),
         'patch_size': args.patch_size,
-        'alpha_content': tune.grid_search([1,0]),
-        'alpha_adversarial': 0,
-        'ragan': True,
+        'alpha_content': 1,
+        'alpha_adversarial': 0.1,
+        'ragan': False,
+        'gan_mode': 'vanilla',
         'edge_loss': 2,
         'netD_freq': 1,
         'patients_frac': 0.5,
         'patch_overlap': 0.5,
+        'datasource': '2mm_1mm',
+        'num_res_blocks': tune.grid_search([1,2,3,4])
     }
-
     reporter = CLIReporter(
-        parameter_columns=['optimizer', 'learning_rate', 'alpha_content', 'alpha_adversarial'],
+        parameter_columns=['num_res_blocks', 'learning_rate_D'],
         metric_columns=["loss", "training_iteration"])
 
     resources_per_trial = {'cpu': 8, 'gpu': 1}

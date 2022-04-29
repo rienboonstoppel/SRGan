@@ -138,8 +138,16 @@ class LitTrainer(pl.LightningModule):
     def setup(self, stage='fit'):
         args = self.args
         data_path = os.path.join(args.root_dir, 'data')
-        train_subjects = data_split('training', patients_frac=self.patients_frac, root_dir=data_path, datasource=self.datasource)
-        val_subjects = data_split('validation', patients_frac=self.patients_frac, root_dir=data_path, datasource=self.datasource)
+        train_subjects = data_split('training',
+                                    patients_frac=self.patients_frac,
+                                    root_dir=data_path,
+                                    datasource=self.datasource,
+                                    numslices=None)
+        val_subjects = data_split('validation',
+                                  patients_frac=self.patients_frac,
+                                  root_dir=data_path,
+                                  datasource=self.datasource,
+                                  numslices=None)
 
         training_transform = tio.Compose([
             Normalize(std=args.std),

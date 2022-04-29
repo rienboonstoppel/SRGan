@@ -38,7 +38,8 @@ def main():
         'b2': 0.5,
         'batch_size': 16,
         'num_filters': 64,
-        'learning_rate': 1e-5,
+        'learning_rate_G': 1e-4,
+        'learning_rate_D': 1e-4,
         'patch_size': args.patch_size,
         'alpha_content': 1,
         'alpha_adversarial': 0.1,
@@ -47,7 +48,7 @@ def main():
         'edge_loss': 2,
         'netD_freq': 1,
         'datasource': '2mm_1mm',
-        'patients_frac': 1,
+        'patients_frac': .5,
         'patch_overlap': 0.5,
     }
 
