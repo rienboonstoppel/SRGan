@@ -33,7 +33,7 @@ def train_tune(config, args):
 
     ckpt_path = os.path.join(args.root_dir, 'ray_results', args.name, 'checkpoints')
     os.makedirs(ckpt_path, exist_ok=True)
-    ckpt_filename = 'checkpoint_{}_{}'.format(config['num_res_blocks'], config['learning_rate_D'])
+    ckpt_filename = 'checkpoint_{}'.format(config['learning_rate_D'])
 
     checkpoint_callback_best = ModelCheckpoint(
         monitor="val_loss",
@@ -106,17 +106,17 @@ def main():
         'patch_size': args.patch_size,
         'alpha_content': 1,
         'alpha_adversarial': 0.1,
-        'ragan': False,
-        'gan_mode': 'vanilla',
+        'ragan': True,
+        'gan_mode': 'wgan',
         'edge_loss': 2,
         'netD_freq': 1,
-        'patients_frac': 0.5,
+        'patients_frac': 1,
         'patch_overlap': 0.5,
         'datasource': '2mm_1mm',
-        'num_res_blocks': tune.grid_search([1,2,3,4])
+        'num_res_blocks': 1
     }
     reporter = CLIReporter(
-        parameter_columns=['num_res_blocks', 'learning_rate_D'],
+        parameter_columns=['learning_rate_D'],
         metric_columns=["loss", "training_iteration"])
 
     resources_per_trial = {'cpu': 8, 'gpu': 1}

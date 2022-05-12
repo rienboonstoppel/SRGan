@@ -1,6 +1,8 @@
 import nibabel as nib
 import numpy as np
 import os
+from tensorboard.backend.event_processing import event_accumulator
+import cv2
 
 def print_config(config, args):
     print_args =['std', 'num_workers', 'root_dir', 'name', 'precision', 'gpus', 'max_epochs', 'max_time'] #'warmup_batches'
@@ -81,6 +83,7 @@ def save_subject_real(subject, header, pref, std, max_vals, source, path='output
 def save_subject_all(subject, header, pref, std, max_vals, source, path='output'):
     for key in subject.keys():
         print(key)
+        os.makedirs(path, exist_ok=True)
         save_to_nifti(img = subject[key],
                       header = header,
                       std = std,
@@ -88,3 +91,19 @@ def save_subject_all(subject, header, pref, std, max_vals, source, path='output'
                       fname = os.path.join(path, '{}_{}.nii.gz'.format(pref, key)),
                       source = source,
                       )
+
+
+def save_images_from_event(path):
+    event_acc = event_accumulator.EventAccumulator(path, size_guidance={'images': 0})
+    event_acc.Reload()
+    path, fname = os.path.split(path)
+    for tag in event_acc.Tags()['images']:
+        events = event_acc.Images(tag)
+        tag_name = tag.replace('/', ' ')
+        tag_path = os.path.join(path, 'images', tag_name)
+        os.makedirs(tag_path, exist_ok=True)
+        for index, event in enumerate(events):
+            s = np.frombuffer(event.encoded_image_string, dtype=np.uint8)
+            image = cv2.imdecode(s, cv2.IMREAD_GRAYSCALE)
+            fname = '{:04}.jpg'.format(index)
+            cv2.imwrite(os.path.join(tag_path, fname), image)

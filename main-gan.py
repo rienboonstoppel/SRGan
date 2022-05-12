@@ -41,7 +41,7 @@ def main():
         'learning_rate_G': 1e-4,
         'learning_rate_D': 1e-4,
         'patch_size': args.patch_size,
-        'alpha_content': 1,
+        'alpha_content': 0,
         'alpha_adversarial': 0.1,
         'ragan': False,
         'gan_mode': 'vanilla',
@@ -75,7 +75,8 @@ def main():
         dirpath=logger.log_dir,
         filename=args.name+"-checkpoint-{epoch}",
         save_top_k=-1,
-        train_time_interval=timedelta(hours=3),
+        # train_time_interval=timedelta(minutes=2),
+        every_n_epochs=1,
     )
 
     model = LitTrainer(netG=generator, netF=feature_extractor, netD=discriminator, args=args, config=config)

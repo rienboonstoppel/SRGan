@@ -272,8 +272,8 @@ class LitTrainer(pl.LightningModule):
         training_transform = tio.Compose([
             Normalize(std=args.std),
             # tio.RandomNoise(p=0.5),
-            tio.RandomFlip(axes=(0, 1), flip_probability=1),
-            tio.RandomFlip(axes=(0, 1), flip_probability=0.9),
+            tio.RandomFlip(axes=(0, 1), flip_probability=0.5),
+            tio.RandomFlip(axes=(0, 1), flip_probability=0.75),
             # tio.RandomAffine(degrees=(0, 0, 0, 0, 0, 360),
             #                  default_pad_value=0,
             #                  scales=0,
@@ -299,12 +299,13 @@ class LitTrainer(pl.LightningModule):
         #                                     # padding_mode=0,
         #                                     )
 
-        probabilities = {0: 0, 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 1, 8: 1, 9: 1, 10: 1, 11: 1, 12: 1, 13: 1,
-                         14: 1, 15: 1, 16: 1}
+        probabilities = {0: 0, 1: 1}
+        # , 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 1, 8: 1, 9: 1, 10: 1, 11: 1, 12: 1, 13: 1,
+        #                  14: 1, 15: 1, 16: 1}
 
         self.sampler = tio.data.LabelSampler(
             patch_size=(self.patch_size, self.patch_size, 1),
-            label_name='HR_msk',
+            label_name='HR_msk_bin',
             label_probabilities=probabilities,
         )
 

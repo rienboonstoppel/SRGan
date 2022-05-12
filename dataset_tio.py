@@ -10,6 +10,7 @@ import torch
 import torchio as tio
 from torchio.data.subject import Subject
 from torchio.transforms.intensity_transform import IntensityTransform
+import cv2
 
 def perc_norm(img3d, perc=95):
     max_val = np.percentile(img3d, perc)
@@ -60,6 +61,7 @@ class ImagePair(object):
         self.HR = nib.load(HR_fname)
         self.LR_msk = nib.load(LR_msk_fname)
         self.HR_msk = nib.load(HR_msk_fname)
+        self.HR_msk_binary = nib.load(HR_msk_fname)
 
     def subject(self):
         self.to_nifty()
@@ -68,11 +70,18 @@ class ImagePair(object):
             HR = slice_middle(self.HR.get_fdata(), self.select_slices, datasource=self.datasource)
             LR_msk = slice_middle(self.LR_msk.get_fdata(), self.select_slices, datasource=self.datasource)
             HR_msk = slice_middle(self.HR_msk.get_fdata(), self.select_slices, datasource=self.datasource)
+            HR_msk_binary = slice_middle(self.HR_msk_binary.get_fdata(), self.select_slices, datasource=self.datasource)
+            HR_msk_binary[HR_msk_binary>0]=1
+            HR_msk_binary = cv2.erode(HR_msk_binary, np.ones((10, 10)), iterations=3)
+
         else:
             LR = self.LR.get_fdata()
             HR = self.HR.get_fdata()
             LR_msk = self.LR_msk.get_fdata()
             HR_msk = self.HR_msk.get_fdata()
+            HR_msk_binary = self.HR_msk_binary.get_fdata()
+            HR_msk_binary[HR_msk_binary>0]=1
+            HR_msk_binary = cv2.erode(HR_msk_binary, np.ones((10, 10)), iterations=3)
 
         LR_norm, self.scaling_LR = perc_norm(LR)
         HR_norm, self.scaling_HR = perc_norm(HR)
@@ -82,6 +91,7 @@ class ImagePair(object):
             HR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(HR_norm,0))),
             LR_msk=tio.LabelMap(tensor=torch.from_numpy(np.expand_dims(LR_msk, 0))),
             HR_msk=tio.LabelMap(tensor=torch.from_numpy(np.expand_dims(HR_msk, 0))),
+            HR_msk_bin=tio.LabelMap(tensor=torch.from_numpy(np.expand_dims(HR_msk_binary, 0))),
         )
         return subject
 
