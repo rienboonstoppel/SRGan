@@ -91,6 +91,7 @@ def main():
         precision=args.precision,
         callbacks=[lr_monitor, checkpoint_callback_best, checkpoint_callback_time],
         enable_progress_bar=True,
+        num_sanity_val_steps=args.num_sanity_val_steps
     )
 
     trainer.fit(
