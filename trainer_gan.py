@@ -9,7 +9,7 @@ from dataset_tio import data_split, Normalize, calculate_overlap
 from edgeloss import edge_loss1, edge_loss2, edge_loss3
 from torchvision.utils import save_image, make_grid
 import warnings
-from skimage.metrics import structural_similarity as SSIM
+from utils import val_metrics
 
 warnings.filterwarnings('ignore', '.*The dataloader, .*')
 
@@ -81,12 +81,6 @@ class LitTrainer(pl.LightningModule):
         img_grid = torch.cat(
             [torch.stack([a, b, c, d]) for a, b, c, d in zip(imgs_lr, imgs_hr, imgs_sr, diff)]).unsqueeze(1)
         return img_grid
-
-    def post_proc(self, img: torch.Tensor, bg_idx: np.ndarray, crop_coords: tuple) -> np.ndarray:
-        img[bg_idx] = 0
-        min, max = crop_coords
-        img = img.squeeze(0)[min[0]:max[0] + 1, min[1]:max[1] + 1, min[2]:max[2] + 1].numpy() * self.args.std
-        return img
 
     def forward(self, inputs):
         return self.netG(inputs)
@@ -238,12 +232,14 @@ class LitTrainer(pl.LightningModule):
                      on_step=False,
                      on_epoch=True,
                      sync_dist=True,
-                     batch_size=self.batch_size)
+                     batch_size=self.batch_size,
+                     add_dataloader_idx=False)
             self.log('Epoch loss/discriminator', {"Val": d_loss},
                      on_step=False,
                      on_epoch=True,
                      sync_dist=True,
-                     batch_size=self.batch_size)
+                     batch_size=self.batch_size,
+                     add_dataloader_idx=False)
 
             if self.log_images_val:
                 val_batches_done = batch_idx + self.current_epoch * self.val_len
@@ -258,6 +254,7 @@ class LitTrainer(pl.LightningModule):
                     # save_image(grid, save_dir + "/%04d.png" % val_batches_done, nrow=4, normalize=False)
 
             return g_loss
+
         if dataloader_idx > 0:
             imgs_lr, imgs_hr = self.prepare_batch(batch)
             locations = batch[tio.LOCATION]
@@ -270,57 +267,66 @@ class LitTrainer(pl.LightningModule):
         avg_loss = torch.mean(torch.stack(val_loss))
         self.log('val_loss', avg_loss, sync_dist=True)
 
-        data = outputs[1:]
-        # print(len(data))
+        output_data = outputs[1:]
+
+        SR_aggs, metrics = val_metrics(output_data, self.aggregator_HR, self.aggregator_SR, self.args.std, self.post_proc_info)
+
+        self.log('Metrics/SSIM_mean', metrics['SSIM']['mean'])
+        self.log('Metrics/SSIM_quartiles', {'Q1': metrics['SSIM']['quartiles'][0],
+                                            'Median': metrics['SSIM']['quartiles'][1],
+                                            'Q3': metrics['SSIM']['quartiles'][2],
+                                            },
+                 on_epoch=True,
+                 sync_dist=True,
+                 prog_bar=False,
+                 batch_size=self.batch_size)
+
+        self.log('Metrics/NCC_mean', metrics['NCC']['mean'])
+        self.log('Metrics/NCC_quartiles', {'Q1': metrics['NCC']['quartiles'][0],
+                                            'Median': metrics['NCC']['quartiles'][1],
+                                            'Q3': metrics['NCC']['quartiles'][2],
+                                            },
+                 on_epoch=True,
+                 sync_dist=True,
+                 prog_bar=False,
+                 batch_size=self.batch_size)
+
+        self.log('Metrics/NRMSE_mean', metrics['NRMSE']['mean'])
+        self.log('Metrics/NRMSE_quartiles', {'Q1': metrics['NRMSE']['quartiles'][0],
+                                            'Median': metrics['NRMSE']['quartiles'][1],
+                                            'Q3': metrics['NRMSE']['quartiles'][2],
+                                            },
+                 on_epoch=True,
+                 sync_dist=True,
+                 prog_bar=False,
+                 batch_size=self.batch_size)
 
 
 
-        SSIMs = []
-        # HR_aggs = []
-        # SR_aggs = []
-        for i in range(len(data)):
-            for j in range(len(data[i])):
-                imgs_hr, imgs_sr, locations = data[i][j]
-                self.aggregator_HR.add_batch(imgs_hr.unsqueeze(4), locations)
-                self.aggregator_SR.add_batch(imgs_sr.unsqueeze(4), locations)
-
-            HR_agg = self.aggregator_HR.get_output_tensor()
-            SR_agg = self.aggregator_SR.get_output_tensor()
-            # HR_aggs.append(HR_agg*self.args.std)
-            # SR_aggs.append(SR_agg*self.args.std)
-            bg_idx, brain_idx = self.post_proc_info[i]
-            # print(HR_agg.shape, bg_idx, brain_idx)
-            # print(SR_agg.shape, bg_idx, brain_idx)
-            HR_agg = self.post_proc(HR_agg, bg_idx, brain_idx)
-            SR_agg = self.post_proc(SR_agg, bg_idx, brain_idx)
-            #
-            ssim = SSIM(HR_agg, SR_agg, gaussian_weights=True, sigma=1.5, use_sample_covariance=False)
-            SSIMs.append(ssim)
-            # print(ssim)
-        self.log('SSIM', np.mean(SSIMs))
-
-        # self.logger.experiment.add_images('generated images/val_aggregated',
-        #                                  torch.clamp(torch.cat(SR_aggs, dim=3), 0, 1),
-        #                                  self.current_epoch,
-        #                                  dataformats='CHWN')
+        self.logger.experiment.add_images('generated images/val_aggregated',
+                                          torch.clamp(torch.cat(SR_aggs, dim=3), 0, 1),
+                                          self.current_epoch,
+                                          dataformats='CHWN')
 
     def setup(self, stage='fit'):
         args = self.args
         data_path = os.path.join(args.root_dir, 'data')
         train_subjects = data_split('training',
-                                    patients_frac=self.patients_frac,
-                                    root_dir=data_path,
-                                    datasource=self.datasource,
-                                    numslices=None)
+                                     patients_frac=self.patients_frac,
+                                     root_dir=data_path,
+                                     datasource=self.datasource,
+                                     numslices=None)
         val_subjects = data_split('validation',
-                                  patients_frac=self.patients_frac,
-                                  root_dir=data_path,
-                                  datasource=self.datasource,
-                                  numslices=None)
+                                   patients_frac=self.patients_frac,
+                                   root_dir=data_path,
+                                   datasource=self.datasource,
+                                   numslices=None)
         test_subjects = data_split('test',
                                    patients_frac=self.patients_frac,
                                    datasource=self.datasource,
-                                   numslices=50)
+                                   numslices=60)
+
+        self.num_test_subjects = len(test_subjects)
 
         self.post_proc_info = []
         for subject in test_subjects:
@@ -331,7 +337,6 @@ class LitTrainer(pl.LightningModule):
             crop_coords = ([brain_idx[i].min() for i in range(len(brain_idx))],
                            [brain_idx[i].max() for i in range(len(brain_idx))])
             self.post_proc_info.append((bg_idx, crop_coords))
-        print('post_proc_len', len(self.post_proc_info))
 
         training_transform = tio.Compose([
             Normalize(std=args.std),
@@ -371,8 +376,6 @@ class LitTrainer(pl.LightningModule):
         #                                     )
 
         probabilities = {0: 0, 1: 1}
-        # , 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 1, 8: 1, 9: 1, 10: 1, 11: 1, 12: 1, 13: 1,
-        #                  14: 1, 15: 1, 16: 1}
 
         self.sampler = tio.data.LabelSampler(
             patch_size=(self.patch_size, self.patch_size, 1),
@@ -416,7 +419,7 @@ class LitTrainer(pl.LightningModule):
         self.val_len = len(val_loader)
 
         loaders = []
-        for i in range(15):
+        for i in range(self.num_test_subjects):
             grid_sampler = tio.inference.GridSampler(
                 subject=self.test_set[i],
                 patch_size=(self.patch_size, self.patch_size, 1),
@@ -427,66 +430,12 @@ class LitTrainer(pl.LightningModule):
                 grid_sampler, batch_size=self.batch_size)
             loaders.append(test_loader)
 
-        # grid_sampler_0 = tio.inference.GridSampler(
-        #     subject=self.test_set[0],
-        #     patch_size=(self.patch_size, self.patch_size, 1),
-        #     patch_overlap=self.overlap,
-        #     padding_mode=0,
-        # )
-        #
-        # grid_sampler_1 = tio.inference.GridSampler(
-        #     subject=self.test_set[1],
-        #     patch_size=(self.patch_size, self.patch_size, 1),
-        #     patch_overlap=self.overlap,
-        #     padding_mode=0,
-        # )
+        self.aggregator_HR = tio.inference.GridAggregator(grid_sampler)
+        self.aggregator_SR = tio.inference.GridAggregator(grid_sampler)
 
-        self.aggregator_HR=tio.inference.GridAggregator(grid_sampler)
-        self.aggregator_SR=tio.inference.GridAggregator(grid_sampler)
-
-        # test_loader_0 = torch.utils.data.DataLoader(
-        #         grid_sampler_0, batch_size=self.batch_size)
-        # test_loader_1 = torch.utils.data.DataLoader(
-        #         grid_sampler_1, batch_size=self.batch_size)
         self.test_len = len(self.test_set)
 
-        return [val_loader] + loaders
-
-    # def test_dataloader(self):
-    #     test_queue = tio.Queue(
-    #         subjects_dataset=self.test_set,
-    #         max_length=self.samples_per_volume * 5,
-    #         samples_per_volume=self.samples_per_volume,
-    #         sampler=self.sampler,
-    #         num_workers=self.args.num_workers,
-    #         shuffle_subjects=False,
-    #         shuffle_patches=False,
-    #     )
-    #     test_loader = torch.utils.data.DataLoader(
-    #         test_queue,
-    #         batch_size=self.batch_size,
-    #         num_workers=0,
-    #     )
-    #     self.test_len = len(test_loader)
-    #     return test_loader
-
-    # def test_dataloader(self):
-    #     test_loaders = []
-    #     self.test_aggregators = []
-    #     for i in range(len(self.test_set)):
-    #         grid_sampler = tio.inference.GridSampler(
-    #             subject=self.test_set[i],
-    #             patch_size=(self.patch_size, self.patch_size, 1),
-    #             patch_overlap=self.overlap,
-    #             padding_mode=0,
-    #         )
-    #         self.test_aggregators.append(tio.inference.GridAggregator(grid_sampler))
-    #         test_loaders.append(torch.utils.data.DataLoader(
-    #             grid_sampler, batch_size=self.batch_size))
-    #
-    #
-    #     self.test_len = len(self.test_set)
-    #     return test_loaders
+        return [val_loader, *loaders]
 
     def configure_optimizers(self):
         opt_g = self.optimizer_G

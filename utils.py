@@ -3,6 +3,9 @@ import numpy as np
 import os
 from tensorboard.backend.event_processing import event_accumulator
 import cv2
+from skimage.metrics import structural_similarity as SSIM
+from skimage.metrics import normalized_root_mse as NRMSE
+import torch
 
 def print_config(config, args):
     print_args =['std', 'num_workers', 'root_dir', 'name', 'precision', 'gpus', 'max_epochs', 'max_time'] #'warmup_batches'
@@ -107,3 +110,74 @@ def save_images_from_event(path):
             image = cv2.imdecode(s, cv2.IMREAD_GRAYSCALE)
             fname = '{:04}.jpg'.format(index)
             cv2.imwrite(os.path.join(tag_path, fname), image)
+
+def NCC(real_image, generated_image):
+    """Method to compute the normalised cross correlation between two images.
+    Arguments:
+                real_image:       (numpy array) the real image
+                predicted_image:  (numpy array) the predicted image by the model
+    Returns:
+                NCCScore:         (float) the normalised cross correlation score
+    """
+    # if the images are not the same size, raise an error
+    if real_image.shape != generated_image.shape:
+        raise AssertionError("The inputs must be the same size.")
+    # reshape images to vectors
+    u = real_image.reshape((real_image.shape[0]*real_image.shape[1]*real_image.shape[2],1))
+    v = generated_image.reshape((generated_image.shape[0]*generated_image.shape[1]*real_image.shape[2],1))
+    # take the real image and subtract the mean of the real image
+    u = u - u.mean(keepdims=True)
+    # take the generated image and subtract the mean of the generated image
+    v = v - v.mean(keepdims=True)
+    # transpose the real image for multiplication
+    TransposedU = np.transpose(u)
+    # calculate the length of the image
+    length = np.linalg.norm(u,ord=2)*np.linalg.norm(v,ord=2)
+    # calculate the NCC of the real image and the generated image
+    NCCScore = float(TransposedU.dot(v))/length
+    # return the NCC score
+    return NCCScore
+
+def post_proc(img: torch.Tensor, bg_idx: np.ndarray, crop_coords: tuple) -> np.ndarray:
+    img[bg_idx] = 0
+    min, max = crop_coords
+    img = img.squeeze(0)[min[0]:max[0] + 1, min[1]:max[1] + 1, min[2]:max[2] + 1].numpy()
+    return img
+
+def val_metrics(output_data, HR_aggregator, SR_aggregator, std, post_proc_info):
+    metrics = ['NCC', 'SSIM', 'NRMSE']
+    scores = {key: [] for key in metrics}
+    # HR_aggs = []
+    SR_aggs = []
+    for i in range(len(output_data)):
+        for j in range(len(output_data[i])):
+            imgs_hr, imgs_sr, locations = output_data[i][j]
+            HR_aggregator.add_batch(imgs_hr.unsqueeze(4), locations)
+            SR_aggregator.add_batch(imgs_sr.unsqueeze(4), locations)
+
+        HR_agg = HR_aggregator.get_output_tensor()
+        SR_agg = SR_aggregator.get_output_tensor()
+        # HR_aggs.append(HR_agg*self.args.std)
+        SR_aggs.append(SR_agg[:, :, :, [25]] * std)
+        bg_idx, brain_idx = post_proc_info[i]
+        HR_agg = post_proc(HR_agg, bg_idx, brain_idx)*std
+        SR_agg = post_proc(SR_agg, bg_idx, brain_idx)*std
+
+        scores['SSIM'].append(SSIM(HR_agg, SR_agg, gaussian_weights=True, sigma=1.5, use_sample_covariance=False))
+        scores['NCC'].append(NCC(HR_agg, SR_agg))
+        scores['NRMSE'].append(NRMSE(HR_agg, SR_agg))
+
+    return SR_aggs, {
+     'SSIM':{
+         'mean': np.mean(scores['SSIM']),
+         'quartiles': np.percentile(scores['SSIM'], [25, 50, 75]),
+     },
+     'NCC': {
+         'mean': np.mean(scores['NCC']),
+         'quartiles': np.percentile(scores['NCC'], [25, 50, 75]),
+     },
+     'NRMSE': {
+         'mean': np.mean(scores['NRMSE']),
+         'quartiles': np.percentile(scores['NRMSE'], [25, 50, 75]),
+     }
+    }

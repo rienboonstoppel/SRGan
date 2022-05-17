@@ -38,10 +38,10 @@ def main():
         'b2': 0.5,
         'batch_size': 16,
         'num_filters': 64,
-        'learning_rate_G': 1e-4,
-        'learning_rate_D': 1e-4,
+        'learning_rate_G': 1e-5,
+        'learning_rate_D': 1e-5,
         'patch_size': args.patch_size,
-        'alpha_content': 0,
+        'alpha_content': 1,
         'alpha_adversarial': 0.1,
         'ragan': False,
         'gan_mode': 'vanilla',
@@ -91,7 +91,8 @@ def main():
         precision=args.precision,
         callbacks=[lr_monitor, checkpoint_callback_best, checkpoint_callback_time],
         enable_progress_bar=True,
-        num_sanity_val_steps=args.num_sanity_val_steps
+        num_sanity_val_steps=args.num_sanity_val_steps,
+        # val_check_interval=args.val_check_interval,
     )
 
     trainer.fit(
