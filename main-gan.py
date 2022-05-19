@@ -48,7 +48,7 @@ def main():
         'edge_loss': 2,
         'netD_freq': 1,
         'datasource': '2mm_1mm',
-        'patients_frac': .5,
+        'patients_frac': .3,
         'patch_overlap': 0.5,
     }
 

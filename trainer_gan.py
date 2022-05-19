@@ -6,6 +6,7 @@ import torchio as tio
 import torchvision
 from lightning_losses import GANLoss, GradientPenalty
 from dataset_tio import data_split, Normalize, calculate_overlap
+from dataset_tio_2 import mixed_data
 from edgeloss import edge_loss1, edge_loss2, edge_loss3
 from torchvision.utils import save_image, make_grid
 import warnings
@@ -311,11 +312,12 @@ class LitTrainer(pl.LightningModule):
     def setup(self, stage='fit'):
         args = self.args
         data_path = os.path.join(args.root_dir, 'data')
-        train_subjects = data_split('training',
-                                     patients_frac=self.patients_frac,
-                                     root_dir=data_path,
-                                     datasource=self.datasource,
-                                     numslices=None)
+        # train_subjects = data_split('training',
+        #                              patients_frac=self.patients_frac,
+        #                              root_dir=data_path,
+        #                              datasource=self.datasource,
+        #                              numslices=None)
+        train_subjects = mixed_data(combined_num_patients=30, num_real=3)
         val_subjects = data_split('validation',
                                    patients_frac=self.patients_frac,
                                    root_dir=data_path,
@@ -377,7 +379,13 @@ class LitTrainer(pl.LightningModule):
 
         probabilities = {0: 0, 1: 1}
 
-        self.sampler = tio.data.LabelSampler(
+        self.train_sampler = tio.data.LabelSampler(
+            patch_size=(self.patch_size, self.patch_size, 1),
+            label_name='MSK',
+            label_probabilities=probabilities,
+        )
+
+        self.val_sampler = tio.data.LabelSampler(
             patch_size=(self.patch_size, self.patch_size, 1),
             label_name='HR_msk_bin',
             label_probabilities=probabilities,
@@ -388,7 +396,7 @@ class LitTrainer(pl.LightningModule):
             subjects_dataset=self.training_set,
             max_length=self.samples_per_volume * 10,
             samples_per_volume=self.samples_per_volume,
-            sampler=self.sampler,
+            sampler=self.train_sampler,
             num_workers=self.args.num_workers,
             shuffle_subjects=True,
             shuffle_patches=True,
@@ -406,7 +414,7 @@ class LitTrainer(pl.LightningModule):
             subjects_dataset=self.val_set,
             max_length=self.samples_per_volume * 5,
             samples_per_volume=self.samples_per_volume,
-            sampler=self.sampler,
+            sampler=self.val_sampler,
             num_workers=self.args.num_workers,
             shuffle_subjects=True,
             shuffle_patches=True,
