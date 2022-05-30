@@ -7,92 +7,103 @@ from skimage.metrics import structural_similarity as SSIM
 from skimage.metrics import normalized_root_mse as NRMSE
 import torch
 
-def print_config(config, args):
-    print_args =['std', 'num_workers', 'root_dir', 'name', 'precision', 'gpus', 'max_epochs', 'max_time'] #'warmup_batches'
 
-    print("{:<15}| {:<10}".format('Var', 'Value'))
-    print('-'*22)
+def print_config(config, args):
+    print_args = ['std', 'num_workers', 'root_dir', 'name', 'precision', 'gpus', 'max_epochs',
+                  'max_time']  # 'warmup_batches'
+
+    print("{:<20}| {:<10}".format('Var', 'Value'))
+    print('-' * 22)
     for key in config:
-        print("{:<15}| {:<10} ".format(key, config[key]))
+        print("{:<20}| {:<10} ".format(key, config[key]))
 
     for arg in print_args:
-        print("{:<15}| {:<10} ".format(arg, getattr(args, arg)))
+        print("{:<20}| {:<10} ".format(arg, getattr(args, arg)))
 
     # if args.gan:
     #     print("{:<15}| {:<10} ".format('GAN', 'relativistic average'))
     # else:
     #     print("{:<15}| {:<10} ".format('GAN', 'vanilla'))
 
+
 def re_scale(img, std, max_val):
     img *= std
     img *= max_val
     return img
 
+
 def save_to_nifti(img, header, fname, std, max_val, source):
     affine = np.eye(4)
     if source == 'sim':
-        affine[2,2] = 2
+        affine[2, 2] = 1/.7
+    # affine = np.array([[1, 0, 0, 0],
+    #                    [0, -1, 0, 0],
+    #                    [0, 0, 1 / .7, 0],
+    #                    [0, 0, 0, 1]])
     img = img.numpy()[0]
     img = re_scale(img, std, max_val)
     img_nifti = nib.Nifti1Image(img, affine=affine, header=header)
     nib.save(img_nifti, fname)
 
+
 def save_subject(subject, header, pref, std, max_vals, source, path='output'):
-    save_to_nifti(img = subject['LR'],
-                  header = header,
-                  std = std,
-                  max_val = max_vals[0],
-                  fname = os.path.join(path, '{}_LR.nii.gz'.format(pref)),
-                  source = source,
+    save_to_nifti(img=subject['LR'],
+                  header=header,
+                  std=std,
+                  max_val=max_vals[0],
+                  fname=os.path.join(path, '{}_LR.nii.gz'.format(pref)),
+                  source=source,
                   )
-    save_to_nifti(img = subject['HR'],
-                  header = header,
-                  std = std,
-                  max_val = max_vals[1],
-                  fname = os.path.join(path, '{}_HR.nii.gz'.format(pref)),
-                  source = source,
+    save_to_nifti(img=subject['HR'],
+                  header=header,
+                  std=std,
+                  max_val=max_vals[1],
+                  fname=os.path.join(path, '{}_HR.nii.gz'.format(pref)),
+                  source=source,
                   )
-    save_to_nifti(img = subject['SR'],
-                  header = header,
-                  std = std,
-                  max_val = max_vals[2],
-                  fname = os.path.join(path, '{}_SR.nii.gz'.format(pref)),
-                  source = source,
+    save_to_nifti(img=subject['SR'],
+                  header=header,
+                  std=std,
+                  max_val=max_vals[2],
+                  fname=os.path.join(path, '{}_SR.nii.gz'.format(pref)),
+                  source=source,
                   )
 
+
 def save_subject_real(subject, header, pref, std, max_vals, source, path='output'):
-    save_to_nifti(img = subject['LR'],
-                  header = header,
-                  std = std,
-                  max_val = max_vals[0],
-                  fname = os.path.join(path, '{}_LR.nii.gz'.format(pref)),
-                  source = source,
+    save_to_nifti(img=subject['LR'],
+                  header=header,
+                  std=std,
+                  max_val=max_vals[0],
+                  fname=os.path.join(path, '{}_LR.nii.gz'.format(pref)),
+                  source=source,
                   )
-    save_to_nifti(img = subject['GT'],
-                  header = header,
-                  std = std,
-                  max_val = max_vals[1],
-                  fname = os.path.join(path, '{}_GT.nii.gz'.format(pref)),
-                  source = source,
+    save_to_nifti(img=subject['GT'],
+                  header=header,
+                  std=std,
+                  max_val=max_vals[1],
+                  fname=os.path.join(path, '{}_GT.nii.gz'.format(pref)),
+                  source=source,
                   )
-    save_to_nifti(img = subject['SR'],
-                  header = header,
-                  std = std,
-                  max_val = max_vals[2],
-                  fname = os.path.join(path, '{}_SR.nii.gz'.format(pref)),
-                  source = source,
+    save_to_nifti(img=subject['SR'],
+                  header=header,
+                  std=std,
+                  max_val=max_vals[2],
+                  fname=os.path.join(path, '{}_SR.nii.gz'.format(pref)),
+                  source=source,
                   )
+
 
 def save_subject_all(subject, header, pref, std, max_vals, source, path='output'):
     for key in subject.keys():
         print(key)
         os.makedirs(path, exist_ok=True)
-        save_to_nifti(img = subject[key],
-                      header = header,
-                      std = std,
-                      max_val = max_vals[key[:2]],
-                      fname = os.path.join(path, '{}_{}.nii.gz'.format(pref, key)),
-                      source = source,
+        save_to_nifti(img=subject[key],
+                      header=header,
+                      std=std,
+                      max_val=max_vals[key[:2]],
+                      fname=os.path.join(path, '{}_{}.nii.gz'.format(pref, key)),
+                      source=source,
                       )
 
 
@@ -111,6 +122,7 @@ def save_images_from_event(path):
             fname = '{:04}.jpg'.format(index)
             cv2.imwrite(os.path.join(tag_path, fname), image)
 
+
 def NCC(real_image, generated_image):
     """Method to compute the normalised cross correlation between two images.
     Arguments:
@@ -123,8 +135,8 @@ def NCC(real_image, generated_image):
     if real_image.shape != generated_image.shape:
         raise AssertionError("The inputs must be the same size.")
     # reshape images to vectors
-    u = real_image.reshape((real_image.shape[0]*real_image.shape[1]*real_image.shape[2],1))
-    v = generated_image.reshape((generated_image.shape[0]*generated_image.shape[1]*real_image.shape[2],1))
+    u = real_image.reshape((real_image.shape[0] * real_image.shape[1] * real_image.shape[2], 1))
+    v = generated_image.reshape((generated_image.shape[0] * generated_image.shape[1] * real_image.shape[2], 1))
     # take the real image and subtract the mean of the real image
     u = u - u.mean(keepdims=True)
     # take the generated image and subtract the mean of the generated image
@@ -132,17 +144,19 @@ def NCC(real_image, generated_image):
     # transpose the real image for multiplication
     TransposedU = np.transpose(u)
     # calculate the length of the image
-    length = np.linalg.norm(u,ord=2)*np.linalg.norm(v,ord=2)
+    length = np.linalg.norm(u, ord=2) * np.linalg.norm(v, ord=2)
     # calculate the NCC of the real image and the generated image
-    NCCScore = float(TransposedU.dot(v))/length
+    NCCScore = float(TransposedU.dot(v)) / length
     # return the NCC score
     return NCCScore
+
 
 def post_proc(img: torch.Tensor, bg_idx: np.ndarray, crop_coords: tuple) -> np.ndarray:
     img[bg_idx] = 0
     min, max = crop_coords
     img = img.squeeze(0)[min[0]:max[0] + 1, min[1]:max[1] + 1, min[2]:max[2] + 1].numpy()
     return img
+
 
 def val_metrics(output_data, HR_aggregator, SR_aggregator, std, post_proc_info):
     metrics = ['NCC', 'SSIM', 'NRMSE']
@@ -160,24 +174,26 @@ def val_metrics(output_data, HR_aggregator, SR_aggregator, std, post_proc_info):
         # HR_aggs.append(HR_agg*self.args.std)
         SR_aggs.append(SR_agg[:, :, :, [25]] * std)
         bg_idx, brain_idx = post_proc_info[i]
-        HR_agg = post_proc(HR_agg, bg_idx, brain_idx)*std
-        SR_agg = post_proc(SR_agg, bg_idx, brain_idx)*std
+        HR_agg = post_proc(HR_agg, bg_idx, brain_idx) * std
+        SR_agg = post_proc(SR_agg, bg_idx, brain_idx) * std
 
+        HR_agg = HR_agg - np.mean(HR_agg)
+        SR_agg = SR_agg - np.mean(SR_agg)
         scores['SSIM'].append(SSIM(HR_agg, SR_agg, gaussian_weights=True, sigma=1.5, use_sample_covariance=False))
         scores['NCC'].append(NCC(HR_agg, SR_agg))
         scores['NRMSE'].append(NRMSE(HR_agg, SR_agg))
 
     return SR_aggs, {
-     'SSIM':{
-         'mean': np.mean(scores['SSIM']),
-         'quartiles': np.percentile(scores['SSIM'], [25, 50, 75]),
-     },
-     'NCC': {
-         'mean': np.mean(scores['NCC']),
-         'quartiles': np.percentile(scores['NCC'], [25, 50, 75]),
-     },
-     'NRMSE': {
-         'mean': np.mean(scores['NRMSE']),
-         'quartiles': np.percentile(scores['NRMSE'], [25, 50, 75]),
-     }
+        'SSIM': {
+            'mean': np.mean(scores['SSIM']),
+            'quartiles': np.percentile(scores['SSIM'], [25, 50, 75]),
+        },
+        'NCC': {
+            'mean': np.mean(scores['NCC']),
+            'quartiles': np.percentile(scores['NCC'], [25, 50, 75]),
+        },
+        'NRMSE': {
+            'mean': np.mean(scores['NRMSE']),
+            'quartiles': np.percentile(scores['NRMSE'], [25, 50, 75]),
+        }
     }

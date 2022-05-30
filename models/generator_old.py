@@ -1,52 +1,45 @@
 import torch
 import torch.nn as nn
 
-class DenseResidualBlock(nn.Module):
-    """
-    The core module of paper: (Residual Dense Network for Image Super-Resolution, CVPR 18)
-    """
-
-    def __init__(self, filters, res_scale=0.2):
-        super(DenseResidualBlock, self).__init__()
-        self.res_scale = res_scale
+class ResidualDenseBlock(nn.Module):
+    def __init__(self, filters):
+        super(ResidualDenseBlock, self).__init__()
 
         def block(in_features, non_linearity=True):
-            layers = [nn.Conv2d(in_features, filters, 3, 1, 1, bias=True)]
+            layers = [nn.Conv2d(in_features, filters, kernel_size=(3,3), padding='same')]
             if non_linearity:
-                layers += [nn.LeakyReLU()]
+                layers += [nn.ReLU()]
             return nn.Sequential(*layers)
 
         self.b1 = block(in_features=1 * filters)
         self.b2 = block(in_features=1 * filters)
         self.b3 = block(in_features=2 * filters)
         self.b4 = block(in_features=3 * filters)
-        self.b5 = block(in_features=4 * filters)#, non_linearity=False)
-        self.blocks = [self.b1, self.b2, self.b3, self.b4, self.b5]
+        self.b5 = block(in_features=4 * filters)
 
     def forward(self, x):
-        inputs = x
-        out1 = self.b1(inputs)
-        out2 = self.b2(out1)
-        cat1 = torch.cat([out2, out1], 1)
-        out3 = self.b3(cat1)
-        cat2 = torch.cat([out3, out2, out1], 1)
-        out4 = self.b4(cat2)
-        cat3 = torch.cat([out4, out3, out2, out1], 1)
-        out5 = self.b5(cat3)
-
-        return out5 + x
+        c1 = self.b1(x)
+        c2 = self.b2(c1)
+        merge1 = torch.cat([c2, c1], 1)
+        c3 = self.b3(merge1)
+        merge2 = torch.cat([c3, c2, c1], 1)
+        c4 = self.b4(merge2)
+        merge3 = torch.cat([c4, c3, c2, c1], 1)
+        gate = self.b5(merge3)
+        output = torch.add(x, gate)
+        return output
 
 class ResidualInResidualDenseBlock(nn.Module):
     def __init__(self, filters):
         super(ResidualInResidualDenseBlock, self).__init__()
-        self.drb = DenseResidualBlock(filters)
+        self.RDB = ResidualDenseBlock(filters)
 
     def forward(self, x):
-        out1 = self.drb(x)
-        out2 = self.drb(out1)
-        out3 = self.drb(out2)
-        cat = torch.cat([out1, out2, out3], 1)
-        return cat
+        out1 = self.RDB(x)
+        out2 = self.RDB(out1)
+        out3 = self.RDB(out2)
+        merge = torch.cat([out1, out2, out3], 1)
+        return merge
 
 
 class GeneratorRRDB(nn.Module):
@@ -55,18 +48,15 @@ class GeneratorRRDB(nn.Module):
 
         # First conv layers
         self.conv1 = nn.Sequential(
-            nn.Conv2d(channels, filters, kernel_size=3, stride=1, padding=1),
-            nn.LeakyReLU(),
-            nn.Conv2d(filters, filters, kernel_size=3, stride=1, padding=1),
-            nn.LeakyReLU(),
+            nn.Conv2d(channels, filters, kernel_size=(3,3), padding='same'),
+            nn.ReLU(),
+            nn.Conv2d(filters, filters, kernel_size=(3,3), padding='same'),
+            nn.ReLU(),
         )
         # Residual blocks
         self.res_blocks = nn.Sequential(*[ResidualInResidualDenseBlock(filters) for _ in range(num_res_blocks)])
-        # Final output block
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(num_res_blocks * 3 * filters, channels, kernel_size=3, stride=1, padding=1),
-            # nn.Linear(filters, filters),
-        )
+        # Final output conv
+        self.conv2 = nn.Conv2d(num_res_blocks * 3 * filters, channels, kernel_size=(3,3), padding='same')
 
     def forward(self, x):
         out1 = self.conv1(x)

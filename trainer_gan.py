@@ -5,8 +5,7 @@ import torch
 import torchio as tio
 import torchvision
 from lightning_losses import GANLoss, GradientPenalty
-from dataset_tio import data_split, Normalize, calculate_overlap
-from dataset_tio_2 import mixed_data
+from dataset_tio import sim_data, Normalize, calculate_overlap
 from edgeloss import edge_loss1, edge_loss2, edge_loss3
 from torchvision.utils import save_image, make_grid
 import warnings
@@ -40,7 +39,6 @@ class LitTrainer(pl.LightningModule):
         self.criterion_pixel = torch.nn.L1Loss()  # method to calculate pixel differences
         self.criterion_content = torch.nn.L1Loss()  # method to calculate differences between vgg features
         self.criterion_GAN = GANLoss(gan_mode=config['gan_mode'])  # method to calculate adversarial loss
-        # self.criterion_GAN = GANLoss(gan_mode='vanilla')  # method to calculate adversarial loss
         self.gradient_penalty = GradientPenalty(critic=self.netD, fake_label=1.0)
         self.criterion_edge = globals()['edge_loss' + str(config['edge_loss'])]
         self.alpha_adv = config['alpha_adversarial']
@@ -57,22 +55,22 @@ class LitTrainer(pl.LightningModule):
 
         if config['optimizer'] == 'sgd':
             self.optimizer_G = torch.optim.SGD(netG.parameters(),
-                                             lr=config['learning_rate_G'],
-                                             momentum=0.9,
-                                             nesterov=True)
+                                               lr=config['learning_rate_G'],
+                                               momentum=0.9,
+                                               nesterov=True)
         elif config['optimizer'] == 'adam':
             self.optimizer_G = torch.optim.Adam(netG.parameters(),
-                                              lr=config['learning_rate_G'],
-                                              betas=(config['b1'], config['b2']))
+                                                lr=config['learning_rate_G'],
+                                                betas=(config['b1'], config['b2']))
         if config['optimizer'] == 'sgd':
             self.optimizer_D = torch.optim.SGD(netD.parameters(),
-                                             lr=config['learning_rate_D'],
-                                             momentum=0.9,
-                                             nesterov=True)
+                                               lr=config['learning_rate_D'],
+                                               momentum=0.9,
+                                               nesterov=True)
         elif config['optimizer'] == 'adam':
             self.optimizer_D = torch.optim.Adam(netD.parameters(),
-                                              lr=config['learning_rate_D'],
-                                              betas=(config['b1'], config['b2']))
+                                                lr=config['learning_rate_D'],
+                                                betas=(config['b1'], config['b2']))
 
     def imgs_cat(self, imgs_lr, imgs_hr, imgs_sr):
         imgs_lr = (imgs_lr[:10] * self.args.std).squeeze()
@@ -101,16 +99,16 @@ class LitTrainer(pl.LightningModule):
                                                  make_grid(torch.clamp(grid, 0, 1), nrow=4),
                                                  train_batches_done,
                                                  dataformats='CHW')
-                save_dir = os.path.join(self.logger.log_dir, 'images', 'training')
-                os.makedirs(save_dir, exist_ok=True)
-                save_image(grid, save_dir + "/%04d.png" % train_batches_done, nrow=4, normalize=False)
-                inference_path = os.path.join(save_dir, 'inference')
-                os.makedirs(inference_path + "/%04d" % train_batches_done, exist_ok=True)
-                for i in range(1):
-                    img_sr = imgs_sr[i, 0, :, :] * self.args.std
-                    save_image(img_sr, os.path.join(inference_path, "%04d" % train_batches_done, '%04d.png' % i))
-                    np.savetxt(os.path.join(inference_path, "%04d" % train_batches_done, '%04d.csv' % i),
-                               img_sr.detach().cpu().numpy(), delimiter=',')
+                # save_dir = os.path.join(self.logger.log_dir, 'images', 'training')
+                # os.makedirs(save_dir, exist_ok=True)
+                # save_image(grid, save_dir + "/%04d.png" % train_batches_done, nrow=4, normalize=False)
+                # inference_path = os.path.join(save_dir, 'inference')
+                # os.makedirs(inference_path + "/%04d" % train_batches_done, exist_ok=True)
+                # for i in range(1):
+                #     img_sr = imgs_sr[i, 0, :, :] * self.args.std
+                #     save_image(img_sr, os.path.join(inference_path, "%04d" % train_batches_done, '%04d.png' % i))
+                #     np.savetxt(os.path.join(inference_path, "%04d" % train_batches_done, '%04d.csv' % i),
+                #                img_sr.detach().cpu().numpy(), delimiter=',')
 
         # ---------------------
         #  Train Generator
@@ -141,7 +139,7 @@ class LitTrainer(pl.LightningModule):
             # Calculate gradient penalty
             # gradient_penalty = self.gradient_penalty(imgs_hr, imgs_sr)
 
-            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_adv * loss_adv + loss_content #+ 1 * gradient_penalty
+            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_adv * loss_adv + loss_content  # + 1 * gradient_penalty
 
             self.log('Step loss/generator', {'train_loss_edge': loss_edge,
                                              'train_loss_pixel': loss_pixel,
@@ -201,8 +199,8 @@ class LitTrainer(pl.LightningModule):
             loss_pixel = self.criterion_pixel(imgs_sr, imgs_hr)
             loss_edge = self.criterion_edge(imgs_sr, imgs_hr)
 
-            gen_features = self.netF(imgs_sr.repeat(1, 3, 1 ,1))
-            real_features = self.netF(imgs_hr.repeat(1, 3, 1 ,1))
+            gen_features = self.netF(imgs_sr.repeat(1, 3, 1, 1))
+            real_features = self.netF(imgs_hr.repeat(1, 3, 1, 1))
             loss_content = self.criterion_content(gen_features, real_features)
 
             # Extract validity predictions from discriminator
@@ -262,7 +260,6 @@ class LitTrainer(pl.LightningModule):
             imgs_sr = self(imgs_lr)
             return imgs_hr, imgs_sr, locations
 
-
     def validation_epoch_end(self, outputs):
         val_loss = outputs[0]
         avg_loss = torch.mean(torch.stack(val_loss))
@@ -270,7 +267,8 @@ class LitTrainer(pl.LightningModule):
 
         output_data = outputs[1:]
 
-        SR_aggs, metrics = val_metrics(output_data, self.aggregator_HR, self.aggregator_SR, self.args.std, self.post_proc_info)
+        SR_aggs, metrics = val_metrics(output_data, self.aggregator_HR, self.aggregator_SR, self.args.std,
+                                       self.post_proc_info)
 
         self.log('Metrics/SSIM_mean', metrics['SSIM']['mean'])
         self.log('Metrics/SSIM_quartiles', {'Q1': metrics['SSIM']['quartiles'][0],
@@ -284,9 +282,9 @@ class LitTrainer(pl.LightningModule):
 
         self.log('Metrics/NCC_mean', metrics['NCC']['mean'])
         self.log('Metrics/NCC_quartiles', {'Q1': metrics['NCC']['quartiles'][0],
-                                            'Median': metrics['NCC']['quartiles'][1],
-                                            'Q3': metrics['NCC']['quartiles'][2],
-                                            },
+                                           'Median': metrics['NCC']['quartiles'][1],
+                                           'Q3': metrics['NCC']['quartiles'][2],
+                                           },
                  on_epoch=True,
                  sync_dist=True,
                  prog_bar=False,
@@ -294,15 +292,13 @@ class LitTrainer(pl.LightningModule):
 
         self.log('Metrics/NRMSE_mean', metrics['NRMSE']['mean'])
         self.log('Metrics/NRMSE_quartiles', {'Q1': metrics['NRMSE']['quartiles'][0],
-                                            'Median': metrics['NRMSE']['quartiles'][1],
-                                            'Q3': metrics['NRMSE']['quartiles'][2],
-                                            },
+                                             'Median': metrics['NRMSE']['quartiles'][1],
+                                             'Q3': metrics['NRMSE']['quartiles'][2],
+                                             },
                  on_epoch=True,
                  sync_dist=True,
                  prog_bar=False,
                  batch_size=self.batch_size)
-
-
 
         self.logger.experiment.add_images('generated images/val_aggregated',
                                           torch.clamp(torch.cat(SR_aggs, dim=3), 0, 1),
@@ -312,27 +308,35 @@ class LitTrainer(pl.LightningModule):
     def setup(self, stage='fit'):
         args = self.args
         data_path = os.path.join(args.root_dir, 'data')
-        # train_subjects = data_split('training',
-        #                              patients_frac=self.patients_frac,
-        #                              root_dir=data_path,
-        #                              datasource=self.datasource,
-        #                              numslices=None)
-        train_subjects = mixed_data(combined_num_patients=30, num_real=3)
-        val_subjects = data_split('validation',
-                                   patients_frac=self.patients_frac,
-                                   root_dir=data_path,
-                                   datasource=self.datasource,
-                                   numslices=None)
-        test_subjects = data_split('test',
-                                   patients_frac=self.patients_frac,
-                                   datasource=self.datasource,
-                                   numslices=60)
+        train_subjects = sim_data(dataset = 'training',
+                                  patients_frac = self.patients_frac,
+                                  root_dir = data_path,
+                                  datasource = self.datasource,
+                                  middle_slices = 100,
+                                  every_other = 2)
+        val_subjects = sim_data(dataset = 'validation',
+                                patients_frac = self.patients_frac,
+                                root_dir = data_path,
+                                datasource = self.datasource,
+                                middle_slices = 100,
+                                every_other = 2)
+        test_subjects = sim_data(dataset = 'test',
+                                 patients_frac = self.patients_frac,
+                                 root_dir = data_path,
+                                 datasource = self.datasource,
+                                 middle_slices = 100,
+                                 every_other = 2)
+
+        # train_subjects = mixed_data(dataset='training', combined_num_patients=self.num_patients, num_real=self.num_real, root_dir=data_path)
+        # val_subjects = mixed_data(dataset='validation', combined_num_patients=self.num_patients, num_real=self.num_real, root_dir=data_path)
+        # test_subjects = mixed_data(dataset='test', combined_num_patients=self.num_patients, num_real=self.num_real,
+        #                            numslices=45, root_dir=data_path)
 
         self.num_test_subjects = len(test_subjects)
 
         self.post_proc_info = []
         for subject in test_subjects:
-            mask = subject['HR_msk'].data
+            mask = subject['MSK'].data
 
             bg_idx = np.where(mask == 0)
             brain_idx = np.where(mask.squeeze(0) != 0)
@@ -345,17 +349,9 @@ class LitTrainer(pl.LightningModule):
             # tio.RandomNoise(p=0.5),
             tio.RandomFlip(axes=(0, 1), flip_probability=0.5),
             tio.RandomFlip(axes=(0, 1), flip_probability=0.75),
-            # tio.RandomAffine(degrees=(0, 0, 0, 0, 0, 360),
-            #                  default_pad_value=0,
-            #                  scales=0,
-            #                  translation=0,
-            #                  isotropic=True
-            #                  )
         ])
 
-        test_transform = tio.Compose([
-            Normalize(std=args.std),
-        ])
+        test_transform = tio.Compose([Normalize(std=args.std),])
 
         self.training_set = tio.SubjectsDataset(
             train_subjects, transform=training_transform)
@@ -367,9 +363,9 @@ class LitTrainer(pl.LightningModule):
             test_subjects, transform=test_transform)
 
         self.overlap, nr_patches = calculate_overlap(train_subjects[0]['LR'],
-                                                (self.patch_size, self.patch_size),
-                                                (self.patch_overlap, self.patch_overlap)
-                                                )
+                                                     (self.patch_size, self.patch_size),
+                                                     (self.patch_overlap, self.patch_overlap)
+                                                     )
         self.samples_per_volume = nr_patches
 
         # self.sampler = tio.data.GridSampler(patch_size=(self.patch_size, self.patch_size, 1),
@@ -387,7 +383,7 @@ class LitTrainer(pl.LightningModule):
 
         self.val_sampler = tio.data.LabelSampler(
             patch_size=(self.patch_size, self.patch_size, 1),
-            label_name='HR_msk_bin',
+            label_name='MSK',
             label_probabilities=probabilities,
         )
 

@@ -17,6 +17,7 @@ import json
 
 warnings.filterwarnings('ignore', '.*The dataloader, .*')
 
+
 # print(os.getcwd())
 # torch.cuda.empty_cache()
 
@@ -33,7 +34,7 @@ def train_tune(config, args):
 
     ckpt_path = os.path.join(args.root_dir, 'ray_results', args.name, 'checkpoints')
     os.makedirs(ckpt_path, exist_ok=True)
-    ckpt_filename = 'checkpoint_{}'.format(config['learning_rate_D'])
+    ckpt_filename = 'checkpoint_{}'.format(config['num_real'])
 
     checkpoint_callback_best = ModelCheckpoint(
         monitor="val_loss",
@@ -47,7 +48,8 @@ def train_tune(config, args):
         dirpath=ckpt_path,
         filename=ckpt_filename + "-{epoch}",
         save_top_k=-1,
-        train_time_interval=timedelta(hours=3),
+        # train_time_interval=timedelta(hours=3),
+        every_n_epochs=3,
     )
 
     model = LitTrainer(netG=generator, netF=feature_extractor, netD=discriminator, args=args, config=config)
@@ -94,29 +96,30 @@ def main():
     parser = LitTrainer.add_model_specific_args(parser)
     args = parser.parse_args()
 
-
     config = {
         'optimizer': 'adam',
         'b1': 0.9,
         'b2': 0.5,
         'batch_size': 16,
         'num_filters': 64,
-        'learning_rate_G': 1e-4,
-        'learning_rate_D': tune.grid_search([1e-3, 1e-4, 1e-5]),
+        'learning_rate_G': 5e-5,
+        'learning_rate_D': 5e-5,
         'patch_size': args.patch_size,
         'alpha_content': 1,
         'alpha_adversarial': 0.1,
-        'ragan': True,
-        'gan_mode': 'wgan',
+        'ragan': False,
+        'gan_mode': 'vanilla',
         'edge_loss': 2,
         'netD_freq': 1,
-        'patients_frac': 1,
-        'patch_overlap': 0.5,
         'datasource': '2mm_1mm',
-        'num_res_blocks': 1
+        'patients_frac': .3,
+        'patch_overlap': 0.5,
+        'num_patients': 30,
+        'num_real': tune.grid_search([0,1,2,3,4,5,6]),
+        'num_res_blocks': 1,
     }
     reporter = CLIReporter(
-        parameter_columns=['learning_rate_D'],
+        parameter_columns=['num_real'],
         metric_columns=["loss", "training_iteration"])
 
     resources_per_trial = {'cpu': 8, 'gpu': 1}
