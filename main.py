@@ -2,6 +2,7 @@ import os
 from trainer_org import LitTrainer as LitTrainer_org
 from trainer_gan import LitTrainer as LitTrainer_gan
 from models.generator_ESRGAN import GeneratorRRDB as generator_ESRGAN
+from models.generator_FSRCNN import FSRCNN as generator_FSRCNN
 from models.generator_RRDB import GeneratorRRDB as generator_RRDB
 from models.generator_DeepUResnet import DeepUResnet as generator_DeepUResnet
 from models.discriminator import Discriminator
@@ -22,13 +23,13 @@ default_config = {
     'b2': 0.5,
     'batch_size': 16,
     'num_filters': 64,
-    'learning_rate_G': 1e-5,
-    'learning_rate_D': 1e-5,
+    'learning_rate_G': 1e-3,
+    'learning_rate_D': 1e-3,
     'patch_size': 64,
-    'alpha_edge': 0.33959092909036953,
-    'alpha_pixel': 0.8857134031583965,
-    'alpha_perceptual': 0.03141740324921236,
-    'alpha_adversarial': 0.33203822617624024,
+    'alpha_edge': 0,
+    'alpha_pixel': 1,
+    'alpha_perceptual': 0,
+    'alpha_adversarial': 0,
     'ragan': True,
     'gan_mode': 'vanilla',
     'edge_loss': 2,
@@ -36,7 +37,7 @@ default_config = {
     'datasource': '1mm_07mm',
     'patients_frac': .3,
     'patch_overlap': 0.5,
-    'generator': 'ESRGAN'
+    'generator': 'FSRCNN'
 }
 
 
@@ -75,6 +76,8 @@ def main(default_config):
         generator = generator_RRDB(channels=1, filters=config.num_filters, num_res_blocks=1)
     elif config.generator == 'DeepUResnet':
         generator = generator_DeepUResnet(nrfilters=config.num_filters)
+    elif config.generator == 'FSRCNN':
+        generator = generator_FSRCNN(scale_factor=1)
     else:
         raise NotImplementedError(
             "Generator architecture '{}' is not recognized or implemented".format(config.generator))

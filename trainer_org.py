@@ -33,7 +33,7 @@ class LitTrainer(pl.LightningModule):
                  ):
         super().__init__()
         self.args = args
-        self.save_hyperparameters(ignore=['netG', 'netF', 'netD'])
+        # self.save_hyperparameters(ignore=['netG', 'netF', 'netD'])
 
         self.netG = netG
         self.netF = netF.eval()
@@ -158,6 +158,7 @@ class LitTrainer(pl.LightningModule):
                           'Q3': metrics['SSIM']['quartiles'][2],
                           },
                  on_epoch=True, sync_dist=True, prog_bar=False, batch_size=self.batch_size)
+        self.log('SSIM_mean', metrics['SSIM']['mean'], sync_dist=True)
 
         self.log('NCC', {'Mean': metrics['NCC']['mean'],
                          'Q1': metrics['NCC']['quartiles'][0],
