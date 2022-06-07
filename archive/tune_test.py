@@ -1,7 +1,7 @@
 import numpy as np
 
 from trainer_tune_test import LitTrainer
-from models.generator import GeneratorRRDB
+from models.generator_ESRGAN import GeneratorRRDB
 import pytorch_lightning as pl
 from argparse import ArgumentParser
 from pytorch_lightning.loggers import TensorBoardLogger

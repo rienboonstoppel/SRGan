@@ -1,16 +1,15 @@
 import os
-import warnings
-
 import numpy as np
 import pytorch_lightning as pl
 import torch
 import torchio as tio
-import wandb
-from torchvision.utils import make_grid
-from edgeloss import edge_loss1, edge_loss2, edge_loss3
-from dataset_tio import sim_data, Normalize, calculate_overlap
+import torchvision
 from lightning_losses import GANLoss, GradientPenalty
-from utils import val_metrics, imgs_cat
+from dataset_tio import sim_data, Normalize, calculate_overlap
+from edgeloss import edge_loss1, edge_loss2, edge_loss3
+from torchvision.utils import save_image, make_grid
+import warnings
+from utils import val_metrics
 
 warnings.filterwarnings('ignore', '.*The dataloader, .*')
 
@@ -19,11 +18,8 @@ class LitTrainer(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = parent_parser.add_argument_group("LitModel")
-        parser.add_argument('--std', type=float, default=0.3548)
-        parser.add_argument('--middle_slices', type=int, default=100)
-        parser.add_argument('--every_other', type=int, default=2)
-        parser.add_argument('--sampler', type=str, default='label', choices=['grid', 'label'])
-
+        # parser.add_argument('--learning_rate', type=float, default=1e-2)
+        # parser.add_argument('--std', type=float, default=-.3548)
         return parent_parser
 
     def __init__(self,
@@ -41,15 +37,11 @@ class LitTrainer(pl.LightningModule):
         self.netD = netD
 
         self.criterion_pixel = torch.nn.L1Loss()  # method to calculate pixel differences
-        self.criterion_perceptual = torch.nn.L1Loss()  # method to calculate differences between vgg features
+        self.criterion_content = torch.nn.L1Loss()  # method to calculate differences between vgg features
         self.criterion_GAN = GANLoss(gan_mode=config['gan_mode'])  # method to calculate adversarial loss
         self.gradient_penalty = GradientPenalty(critic=self.netD, fake_label=1.0)
         self.criterion_edge = globals()['edge_loss' + str(config['edge_loss'])]
-        self.alpha_edge = config['alpha_edge']
-        self.alpha_pixel = config['alpha_pixel']
-        self.alpha_perceptual = config['alpha_perceptual']
         self.alpha_adv = config['alpha_adversarial']
-
         self.netD_freq = config['netD_freq']
 
         self.datasource = config['datasource']
@@ -80,6 +72,15 @@ class LitTrainer(pl.LightningModule):
                                                 lr=config['learning_rate_D'],
                                                 betas=(config['b1'], config['b2']))
 
+    def imgs_cat(self, imgs_lr, imgs_hr, imgs_sr):
+        imgs_lr = (imgs_lr[:10] * self.args.std).squeeze()
+        imgs_hr = (imgs_hr[:10] * self.args.std).squeeze()
+        imgs_sr = (imgs_sr[:10] * self.args.std).squeeze()
+        diff = (imgs_hr - imgs_sr) * 2 + .5
+        img_grid = torch.cat(
+            [torch.stack([a, b, c, d]) for a, b, c, d in zip(imgs_lr, imgs_hr, imgs_sr, diff)]).unsqueeze(1)
+        return img_grid
+
     def forward(self, inputs):
         return self.netG(inputs)
 
@@ -93,8 +94,21 @@ class LitTrainer(pl.LightningModule):
 
         if self.log_images_train:
             if train_batches_done % (self.args.log_every_n_steps * 5) == 0:
-                grid = imgs_cat(imgs_lr * self.args.std, imgs_hr * self.args.std, imgs_sr * self.args.std)
-                self.logger.log_image('images train', [wandb.Image(make_grid(torch.clamp(grid, 0, 1), nrow=10))])
+                grid = self.imgs_cat(imgs_lr, imgs_hr, imgs_sr)
+                self.logger.experiment.add_image('generated images/train',
+                                                 make_grid(torch.clamp(grid, 0, 1), nrow=4),
+                                                 train_batches_done,
+                                                 dataformats='CHW')
+                # save_dir = os.path.join(self.logger.log_dir, 'images', 'training')
+                # os.makedirs(save_dir, exist_ok=True)
+                # save_image(grid, save_dir + "/%04d.png" % train_batches_done, nrow=4, normalize=False)
+                # inference_path = os.path.join(save_dir, 'inference')
+                # os.makedirs(inference_path + "/%04d" % train_batches_done, exist_ok=True)
+                # for i in range(1):
+                #     img_sr = imgs_sr[i, 0, :, :] * self.args.std
+                #     save_image(img_sr, os.path.join(inference_path, "%04d" % train_batches_done, '%04d.png' % i))
+                #     np.savetxt(os.path.join(inference_path, "%04d" % train_batches_done, '%04d.csv' % i),
+                #                img_sr.detach().cpu().numpy(), delimiter=',')
 
         # ---------------------
         #  Train Generator
@@ -111,7 +125,7 @@ class LitTrainer(pl.LightningModule):
 
             gen_features = self.netF(torch.repeat_interleave(imgs_sr, 3, 1))
             real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1)).detach()
-            loss_perceptual = self.criterion_perceptual(gen_features, real_features)
+            loss_content = self.criterion_content(gen_features, real_features)
 
             # Extract validity predictions from discriminator
             pred_real = self.netD(imgs_hr).detach()
@@ -125,21 +139,26 @@ class LitTrainer(pl.LightningModule):
             # Calculate gradient penalty
             # gradient_penalty = self.gradient_penalty(imgs_hr, imgs_sr)
 
-            g_loss = self.alpha_edge * loss_edge \
-                     + self.alpha_pixel * loss_pixel \
-                     + self.alpha_adv * loss_adv \
-                     + self.alpha_perceptual * loss_perceptual  # + 1 * gradient_penalty
+            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_adv * loss_adv + loss_content  # + 1 * gradient_penalty
 
-            self.log('Generator train losses', {'edge': loss_edge,
-                                                'pixel': loss_pixel,
-                                                'perceptual': loss_perceptual,
-                                                'adversarial': loss_adv,
-                                                # 'gradient_penalty': gradient_penalty,
-                                                },
-                     on_step=True, on_epoch=False, sync_dist=True, prog_bar=False, batch_size=self.batch_size)
+            self.log('Step loss/generator', {'train_loss_edge': loss_edge,
+                                             'train_loss_pixel': loss_pixel,
+                                             'train_loss_content': loss_content,
+                                             'train_loss_adv': loss_adv,
+                                             # 'gradient_penalty': gradient_penalty,
+                                             },
+                     on_step=True,
+                     on_epoch=False,
+                     sync_dist=True,
+                     prog_bar=False,
+                     batch_size=self.batch_size)
 
-            self.log('Generator train agg', {'loss': g_loss},
-                     on_step=False, on_epoch=True, sync_dist=True, batch_size=self.batch_size)
+            self.log('Epoch loss/generator', {'Train': g_loss,
+                                              },
+                     on_step=False,
+                     on_epoch=True,
+                     sync_dist=True,
+                     batch_size=self.batch_size)
 
             return g_loss
 
@@ -161,8 +180,11 @@ class LitTrainer(pl.LightningModule):
 
             d_loss = (loss_real + loss_fake) / 2
 
-            self.log('Discriminator train', {'loss': d_loss},
-                     on_step=False, on_epoch=True, sync_dist=True, batch_size=self.batch_size)
+            self.log('Epoch loss/discriminator', {"Train": d_loss},
+                     on_step=False,
+                     on_epoch=True,
+                     sync_dist=True,
+                     batch_size=self.batch_size)
 
             return d_loss
 
@@ -179,7 +201,7 @@ class LitTrainer(pl.LightningModule):
 
             gen_features = self.netF(imgs_sr.repeat(1, 3, 1, 1))
             real_features = self.netF(imgs_hr.repeat(1, 3, 1, 1))
-            loss_perceptual = self.criterion_perceptual(gen_features, real_features)
+            loss_content = self.criterion_content(gen_features, real_features)
 
             # Extract validity predictions from discriminator
             pred_real = self.netD(imgs_hr)
@@ -193,10 +215,7 @@ class LitTrainer(pl.LightningModule):
             # Adversarial loss
             loss_adv = self.criterion_GAN(pred_fake, True)  # Gradient Penalty cannot be calculated during validation
 
-            g_loss = self.alpha_edge * loss_edge \
-                     + self.alpha_pixel * loss_pixel \
-                     + self.alpha_adv * loss_adv \
-                     + self.alpha_perceptual * loss_perceptual
+            g_loss = 0.3 * loss_edge + 0.7 * loss_pixel + self.alpha_adv * loss_adv + loss_content
 
             # ---------------------
             #  Validate Discriminator
@@ -208,16 +227,30 @@ class LitTrainer(pl.LightningModule):
 
             d_loss = (loss_real + loss_fake) / 2
 
-            self.log('Generator val agg', {'loss': g_loss},
-                     on_step=False, on_epoch=True, sync_dist=True, batch_size=self.batch_size, add_dataloader_idx=False)
-            self.log('Discriminator val', {'loss': d_loss},
-                     on_step=False, on_epoch=True, sync_dist=True, batch_size=self.batch_size, add_dataloader_idx=False)
+            self.log('Epoch loss/generator', {'Val': g_loss},
+                     on_step=False,
+                     on_epoch=True,
+                     sync_dist=True,
+                     batch_size=self.batch_size,
+                     add_dataloader_idx=False)
+            self.log('Epoch loss/discriminator', {"Val": d_loss},
+                     on_step=False,
+                     on_epoch=True,
+                     sync_dist=True,
+                     batch_size=self.batch_size,
+                     add_dataloader_idx=False)
 
             if self.log_images_val:
                 val_batches_done = batch_idx + self.current_epoch * self.val_len
                 if val_batches_done % self.args.log_every_n_steps == 0:
-                    grid = imgs_cat(imgs_lr * self.args.std, imgs_hr * self.args.std, imgs_sr * self.args.std)
-                    self.logger.log_image('images validation', [wandb.Image(make_grid(torch.clamp(grid, 0, 1), nrow=10))])
+                    grid = self.imgs_cat(imgs_lr, imgs_hr, imgs_sr)
+                    self.logger.experiment.add_image('generated images/val',
+                                                     make_grid(torch.clamp(grid, 0, 1), nrow=4),
+                                                     val_batches_done,
+                                                     dataformats='CHW')
+                    # save_dir = os.path.join(self.logger.log_dir, 'images', 'val')
+                    # os.makedirs(save_dir, exist_ok=True)
+                    # save_image(grid, save_dir + "/%04d.png" % val_batches_done, nrow=4, normalize=False)
 
             return g_loss
 
@@ -237,52 +270,62 @@ class LitTrainer(pl.LightningModule):
         SR_aggs, metrics = val_metrics(output_data, self.aggregator_HR, self.aggregator_SR, self.args.std,
                                        self.post_proc_info)
 
-        self.log('SSIM', {'Mean': metrics['SSIM']['mean'],
-                          'Q1': metrics['SSIM']['quartiles'][0],
-                          'Median': metrics['SSIM']['quartiles'][1],
-                          'Q3': metrics['SSIM']['quartiles'][2],
-                          },
-                 on_epoch=True, sync_dist=True, prog_bar=False, batch_size=self.batch_size)
+        self.log('Metrics/SSIM_mean', metrics['SSIM']['mean'])
+        self.log('Metrics/SSIM_quartiles', {'Q1': metrics['SSIM']['quartiles'][0],
+                                            'Median': metrics['SSIM']['quartiles'][1],
+                                            'Q3': metrics['SSIM']['quartiles'][2],
+                                            },
+                 on_epoch=True,
+                 sync_dist=True,
+                 prog_bar=False,
+                 batch_size=self.batch_size)
 
-        self.log('NCC', {'Mean': metrics['NCC']['mean'],
-                         'Q1': metrics['NCC']['quartiles'][0],
-                         'Median': metrics['NCC']['quartiles'][1],
-                         'Q3': metrics['NCC']['quartiles'][2],
-                         },
-                 on_epoch=True, sync_dist=True, prog_bar=False, batch_size=self.batch_size)
+        self.log('Metrics/NCC_mean', metrics['NCC']['mean'])
+        self.log('Metrics/NCC_quartiles', {'Q1': metrics['NCC']['quartiles'][0],
+                                           'Median': metrics['NCC']['quartiles'][1],
+                                           'Q3': metrics['NCC']['quartiles'][2],
+                                           },
+                 on_epoch=True,
+                 sync_dist=True,
+                 prog_bar=False,
+                 batch_size=self.batch_size)
 
-        self.log('NRMSE', {'Mean': metrics['NRMSE']['mean'],
-                           'Q1': metrics['NRMSE']['quartiles'][0],
-                           'Median': metrics['NRMSE']['quartiles'][1],
-                           'Q3': metrics['NRMSE']['quartiles'][2],
-                           },
-                 on_epoch=True, sync_dist=True, prog_bar=False, batch_size=self.batch_size)
+        self.log('Metrics/NRMSE_mean', metrics['NRMSE']['mean'])
+        self.log('Metrics/NRMSE_quartiles', {'Q1': metrics['NRMSE']['quartiles'][0],
+                                             'Median': metrics['NRMSE']['quartiles'][1],
+                                             'Q3': metrics['NRMSE']['quartiles'][2],
+                                             },
+                 on_epoch=True,
+                 sync_dist=True,
+                 prog_bar=False,
+                 batch_size=self.batch_size)
 
-        middle = int(SR_aggs[0].shape[3] / 2)
-        grid = torch.stack([SR_aggs[i][:, :, :, middle].squeeze() for i in range(len(SR_aggs))], dim=0).unsqueeze(1)
-        self.logger.log_image('aggregated validation', [wandb.Image(make_grid(torch.clamp(grid, 0, 1), nrow=5))])
+        self.logger.experiment.add_images('generated images/val_aggregated',
+                                          torch.clamp(torch.cat(SR_aggs, dim=3), 0, 1),
+                                          self.current_epoch,
+                                          dataformats='CHWN')
 
     def setup(self, stage='fit'):
         args = self.args
         data_path = os.path.join(args.root_dir, '../data')
-        train_subjects = sim_data(dataset='training',
-                                  patients_frac=self.patients_frac,
-                                  root_dir=data_path,
-                                  datasource=self.datasource,
-                                  middle_slices=args.middle_slices,
-                                  every_other=args.every_other)
-        val_subjects = sim_data(dataset='validation',
-                                patients_frac=self.patients_frac,
-                                root_dir=data_path,
-                                datasource=self.datasource,
-                                middle_slices=args.middle_slices,
-                                every_other=args.every_other)
-        test_subjects = sim_data(dataset='test',
-                                 patients_frac=self.patients_frac,
-                                 root_dir=data_path,
-                                 datasource=self.datasource,
-                                 middle_slices=args.middle_slices,
-                                 every_other=args.every_other)
+        train_subjects = sim_data(dataset = 'training',
+                                  patients_frac = self.patients_frac,
+                                  root_dir = data_path,
+                                  datasource = self.datasource,
+                                  middle_slices = 100,
+                                  every_other = 2)
+        val_subjects = sim_data(dataset = 'validation',
+                                patients_frac = self.patients_frac,
+                                root_dir = data_path,
+                                datasource = self.datasource,
+                                middle_slices = 100,
+                                every_other = 2)
+        test_subjects = sim_data(dataset = 'test',
+                                 patients_frac = self.patients_frac,
+                                 root_dir = data_path,
+                                 datasource = self.datasource,
+                                 middle_slices = 100,
+                                 every_other = 2)
 
         # train_subjects = mixed_data(dataset='training', combined_num_patients=self.num_patients, num_real=self.num_real, root_dir=data_path)
         # val_subjects = mixed_data(dataset='validation', combined_num_patients=self.num_patients, num_real=self.num_real, root_dir=data_path)
@@ -308,7 +351,7 @@ class LitTrainer(pl.LightningModule):
             tio.RandomFlip(axes=(0, 1), flip_probability=0.75),
         ])
 
-        test_transform = tio.Compose([Normalize(std=args.std), ])
+        test_transform = tio.Compose([Normalize(std=args.std),])
 
         self.training_set = tio.SubjectsDataset(
             train_subjects, transform=training_transform)
@@ -319,29 +362,37 @@ class LitTrainer(pl.LightningModule):
         self.test_set = tio.SubjectsDataset(
             test_subjects, transform=test_transform)
 
-        self.overlap, self.samples_per_volume = calculate_overlap(train_subjects[0]['LR'],
-                                                                  (self.patch_size, self.patch_size),
-                                                                  (self.patch_overlap, self.patch_overlap)
-                                                                  )
-        if args.sampler == 'grid':
-            self.sampler = tio.data.GridSampler(patch_size=(self.patch_size, self.patch_size, 1),
-                                                patch_overlap=self.overlap,
-                                                padding_mode=None,
-                                                )
-        elif args.sampler == 'label':
-            probabilities = {0: 0, 1: 1}
-            self.sampler = tio.data.LabelSampler(
-                patch_size=(self.patch_size, self.patch_size, 1),
-                label_name='MSK',
-                label_probabilities=probabilities,
-            )
+        self.overlap, nr_patches = calculate_overlap(train_subjects[0]['LR'],
+                                                     (self.patch_size, self.patch_size),
+                                                     (self.patch_overlap, self.patch_overlap)
+                                                     )
+        self.samples_per_volume = nr_patches
+
+        # self.sampler = tio.data.GridSampler(patch_size=(self.patch_size, self.patch_size, 1),
+        #                                     patch_overlap=overlap,
+        #                                     # padding_mode=0,
+        #                                     )
+
+        probabilities = {0: 0, 1: 1}
+
+        self.train_sampler = tio.data.LabelSampler(
+            patch_size=(self.patch_size, self.patch_size, 1),
+            label_name='MSK',
+            label_probabilities=probabilities,
+        )
+
+        self.val_sampler = tio.data.LabelSampler(
+            patch_size=(self.patch_size, self.patch_size, 1),
+            label_name='MSK',
+            label_probabilities=probabilities,
+        )
 
     def train_dataloader(self):
         training_queue = tio.Queue(
             subjects_dataset=self.training_set,
             max_length=self.samples_per_volume * 10,
             samples_per_volume=self.samples_per_volume,
-            sampler=self.sampler,
+            sampler=self.train_sampler,
             num_workers=self.args.num_workers,
             shuffle_subjects=True,
             shuffle_patches=True,
@@ -359,7 +410,7 @@ class LitTrainer(pl.LightningModule):
             subjects_dataset=self.val_set,
             max_length=self.samples_per_volume * 5,
             samples_per_volume=self.samples_per_volume,
-            sampler=self.sampler,
+            sampler=self.val_sampler,
             num_workers=self.args.num_workers,
             shuffle_subjects=True,
             shuffle_patches=True,

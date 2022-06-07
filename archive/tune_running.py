@@ -1,6 +1,6 @@
 import os
 from trainer_org_running import LitTrainer
-from models.generator import GeneratorRRDB
+from models.generator_ESRGAN import GeneratorRRDB
 import pytorch_lightning as pl
 from argparse import ArgumentParser
 from pytorch_lightning.loggers import TensorBoardLogger

@@ -1,67 +1,123 @@
-from torchvision import transforms
-from models.generator import *
-from models.discriminator import *
-from models.feature_extractor import *
-from trainer import *
-from utils import *
-from torch.utils.data import DataLoader
+import os
+from trainer_org import LitTrainer as LitTrainer_org
+from trainer_gan import LitTrainer as LitTrainer_gan
+from models.generator_ESRGAN import GeneratorRRDB as generator_ESRGAN
+from models.generator_RRDB import GeneratorRRDB as generator_RRDB
+from models.generator_DeepUResnet import DeepUResnet as generator_DeepUResnet
+from models.discriminator import Discriminator
+from models.feature_extractor import FeatureExtractor
+import pytorch_lightning as pl
+from argparse import ArgumentParser
+from pytorch_lightning.callbacks import LearningRateMonitor
+from pytorch_lightning.callbacks import ModelCheckpoint
+from datetime import timedelta
+from utils import print_config
+from pytorch_lightning.loggers import WandbLogger
 
-std = 0.3548
-output_dir = 'runs/test_long'
-start_epoch = 1
-total_epochs = 100
-lambda_edge = 1
-lambda_pixel = 1
-lambda_adv = 1
-lambda_content = 1
 
-transform = transforms.Compose([
-    ToTensor(),
-    Normalize(std=std),
-])
+def main():
+    pl.seed_everything(21011998)
 
-tra_set = ImagePairDataset('training', patients_frac=.5, transform=transform)
-val_set = ImagePairDataset('validation', patients_frac=.5, transform=transform)
+    parser = ArgumentParser()
+    parser.add_argument('--num_workers', default=4, type=int)
+    parser.add_argument('--root_dir', default='/mnt/beta/djboonstoppel/Code', type=str)
+    parser.add_argument('--warmup_batches', default=500, type=int)
+    parser.add_argument('--name', required=True, type=str)
+    parser.add_argument('--gan', action='store_true')
 
-print('Length of training set: \t{}\nLength of validation set: \t{}'.format(len(tra_set), len(val_set)))
+    # --precision=16 --gpus=1 --log_every_n_steps=50 --max_epochs=-1 --max_time="00:00:00:00"
+    parser = pl.Trainer.add_argparse_args(parser)
+    args = parser.parse_args()
+    if args.gan:
+        parser = LitTrainer_gan.add_model_specific_args(parser)
+        args = parser.parse_args()
+    else:
+        parser = LitTrainer_org.add_model_specific_args(parser)
+        args = parser.parse_args()
 
-batch_size = 8
-n_cpu = 2
-tra_dataloader = DataLoader(
-    tra_set,
-    batch_size=batch_size,
-    shuffle=True,
-    num_workers=n_cpu,
-)
+    ### Single config ###
+    config = {
+        'optimizer': 'adam',
+        'b1': 0.9,
+        'b2': 0.5,
+        'batch_size': 16,
+        'num_filters': 64,
+        'learning_rate_G': 5e-5,
+        'learning_rate_D': 5e-5,
+        'patch_size': 64,
+        'alpha_edge': 0.3,
+        'alpha_pixel': 0.7,
+        'alpha_perceptual': 1,
+        'alpha_adversarial': 0.1,
+        'ragan': False,
+        'gan_mode': 'vanilla',
+        'edge_loss': 2,
+        'netD_freq': 1,
+        'datasource': '1mm_07mm',
+        'patients_frac': .3,
+        'patch_overlap': 0.5,
+        'generator': 'DeepUResnet'
+    }
 
-val_dataloader = DataLoader(
-    val_set,
-    batch_size=batch_size,
-    shuffle=True,
-    num_workers=n_cpu,
-)
+    print_config(config, args)
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-generator = GeneratorRRDB(channels=1, filters=64, num_res_blocks=1).to(device)
-discriminator = Discriminator(input_shape=(1, 224, 224)).to(device)
-feature_extractor = FeatureExtractor().to(device)
+    if config['generator'] == 'ESRGAN':
+        generator = generator_ESRGAN(channels=1, filters=config['num_filters'], num_res_blocks=1)
+    elif config['generator'] == 'RRDB':
+        generator = generator_RRDB(channels=1, filters=config['num_filters'], num_res_blocks=1)
+    elif config['generator'] == 'DeepUResnet':
+        generator = generator_DeepUResnet(nrfilters=config['num_filters'])
+    else: raise NotImplementedError("Generator architecture '{}' is not recognized or implemented".format(config['generator']))
 
-trainer = Trainer(
-    generator=generator,
-    discriminator=discriminator,
-    feature_extractor=feature_extractor,
-    training_loader=tra_dataloader,
-    validation_loader=val_dataloader,
-    start_epoch=start_epoch,
-    n_epochs=total_epochs,
-    output_dir=output_dir,
-    batch_size=batch_size,
-    std=std,
-    lambda_edge=lambda_edge,
-    lambda_pixel=lambda_pixel,
-    lambda_adv=lambda_adv,
-    lambda_content=lambda_content,
-)
+    discriminator = Discriminator(input_shape=(1, config['patch_size'], config['patch_size']))
+    feature_extractor = FeatureExtractor()
 
-metrics = trainer.fit()
+    os.makedirs(os.path.join(args.root_dir, '../log', args.name), exist_ok=True)
+    logger = WandbLogger(project='afstuderen',
+                         name=args.name,
+                         save_dir=os.path.join(args.root_dir, '../log', args.name),
+                         log_model=False)
+
+    lr_monitor = LearningRateMonitor(logging_interval='step')
+    checkpoint_callback_best = ModelCheckpoint(
+        monitor="val_loss",
+        dirpath=os.path.join(args.root_dir, '../log', args.name),
+        filename=args.name+"-checkpoint-best",
+        save_top_k=1,
+        mode="min",
+    )
+
+    checkpoint_callback_time = ModelCheckpoint(
+        dirpath=os.path.join(args.root_dir, '../log', args.name),
+        filename=args.name+"-checkpoint-{epoch}",
+        save_top_k=-1,
+        # train_time_interval=timedelta(minutes=2),
+        every_n_epochs=1,
+    )
+
+    if args.gan:
+        model = LitTrainer_gan(netG=generator, netF=feature_extractor, netD=discriminator, args=args, config=config)
+    else:
+        model = LitTrainer_org(netG=generator, netF=feature_extractor, args=args, config=config)
+
+    trainer = pl.Trainer(
+        gpus=args.gpus,
+        max_epochs=args.max_epochs,
+        max_time=args.max_time,
+        logger=logger,
+        log_every_n_steps=args.log_every_n_steps,
+        # strategy=DDPPlugin(find_unused_parameters=True),
+        precision=args.precision,
+        callbacks=[lr_monitor, checkpoint_callback_best, checkpoint_callback_time],
+        enable_progress_bar=True,
+        num_sanity_val_steps=args.num_sanity_val_steps,
+        # val_check_interval=args.val_check_interval,
+    )
+
+    trainer.fit(
+        model,
+    )
+
+if __name__ == '__main__':
+    main()
 

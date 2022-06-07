@@ -1,6 +1,6 @@
 import os
-from trainer_gan import LitTrainer
-from models.generator import GeneratorRRDB
+from archive.trainer_gan import LitTrainer
+from models.generator_ESRGAN import GeneratorRRDB
 from models.discriminator import Discriminator
 from models.feature_extractor import FeatureExtractor
 import pytorch_lightning as pl
@@ -11,7 +11,6 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
 from ray import tune
 from ray.tune import CLIReporter
-from datetime import timedelta
 import warnings
 import json
 

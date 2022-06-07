@@ -9,9 +9,11 @@ import torch
 
 
 def print_config(config, args):
-    print_args = ['std', 'num_workers', 'root_dir', 'name', 'precision', 'gpus', 'max_epochs',
-                  'max_time']  # 'warmup_batches'
+    print('Starting a run with config:')
 
+    print_args = ['name', 'root_dir', 'gan', 'no_checkpointing', 'num_workers',
+                  'gpus', 'max_epochs', 'max_time', 'precision', 'warmup_batches',
+                  'std', 'middle_slices', 'every_other', 'sampler']
     print("{:<20}| {:<10}".format('Var', 'Value'))
     print('-' * 22)
     for key in config:
@@ -157,6 +159,13 @@ def post_proc(img: torch.Tensor, bg_idx: np.ndarray, crop_coords: tuple) -> np.n
     img = img.squeeze(0)[min[0]:max[0] + 1, min[1]:max[1] + 1, min[2]:max[2] + 1].numpy()
     return img
 
+def imgs_cat(imgs_lr, imgs_hr, imgs_sr):
+    imgs_lr = imgs_lr[:10].squeeze()
+    imgs_hr = imgs_hr[:10].squeeze()
+    imgs_sr = imgs_sr[:10].squeeze()
+    diff = (imgs_hr - imgs_sr) * 2 + .5
+    img_grid = torch.cat([imgs_lr, imgs_hr, imgs_sr, diff], dim=0).unsqueeze(1)
+    return img_grid
 
 def val_metrics(output_data, HR_aggregator, SR_aggregator, std, post_proc_info):
     metrics = ['NCC', 'SSIM', 'NRMSE']
@@ -172,7 +181,7 @@ def val_metrics(output_data, HR_aggregator, SR_aggregator, std, post_proc_info):
         HR_agg = HR_aggregator.get_output_tensor()
         SR_agg = SR_aggregator.get_output_tensor()
         # HR_aggs.append(HR_agg*self.args.std)
-        SR_aggs.append(SR_agg[:, :, :, [25]] * std)
+        SR_aggs.append(SR_agg * std)
         bg_idx, brain_idx = post_proc_info[i]
         HR_agg = post_proc(HR_agg, bg_idx, brain_idx) * std
         SR_agg = post_proc(SR_agg, bg_idx, brain_idx) * std
