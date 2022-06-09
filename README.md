@@ -65,7 +65,7 @@ Data is not present in this repo, but should be located in the `data` folder in 
 │   │   │   ├── HR_img            # high res simulated data (0.7mm)
 │   │   │   ├── HR_msk            # segmentations of high res simulated data
 │   │   │   └── LR_img            # low res simulated data (1mm)
-│   │   └── 1mm_07mm              # 2mm and 1mm simulated data
+│   │   └── 2mm_1mm               # 2mm and 1mm simulated data
 │   │   │   ├── HR_img            # high res simulated data (1mm)
 │   │   │   ├── HR_msk            # segmentations of high res simulated data 
 │   │   │   └── LR_img            # low res simulated data (2mm) 
