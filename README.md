@@ -51,3 +51,25 @@ For a hparam sweep (everything in the config can be searched) using wandb, this 
 
 5) `dataset_tio`
 Baseclass for data, dataset is build using TorchIO, exploiting their patch-based pipeline
+
+Data is not present in this repo, but should be located in the `data` folder in root
+```
+├── main.py
+├── data                          # data-folder
+│   ├── brain_real_t1w_mri        # real data
+│   │   ├── GT                    # ground truth real data (1mm)
+│   │   ├── LR                    # low-res real data (2mm)
+│   │   └── MSK                   # segmentations of GT data
+│   ├── brain_simulated_t1w_mri   # simulated data
+│   │   ├── 1mm_07mm              # 1mm and 0.7mm simulated data
+│   │   │   ├── HR_img            # high res simulated data (0.7mm)
+│   │   │   ├── HR_msk            # segmentations of high res simulated data
+│   │   │   └── LR_img            # low res simulated data (1mm)
+│   │   └── 1mm_07mm              # 2mm and 1mm simulated data
+│   │   │   ├── HR_img            # high res simulated data (1mm)
+│   │   │   ├── HR_msk            # segmentations of high res simulated data 
+│   │   │   └── LR_img            # low res simulated data (2mm) 
+│   │   └── ... 
+│   └── ... 
+└── ...
+```
