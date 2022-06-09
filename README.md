@@ -16,6 +16,9 @@ Run for training. Uses couple ways to get all the parameters
   - `middle_slices`: (int) number of slices to select from the middle of the volume of a subject
   - `every_other`: (int) select every x other slices from subject 
   - `sampler`: (str) grid of label-sampler, for labelsampler, mask is required
+- `Argparser` builtin Pytorch Lighting 
+  - `gppus`: (int) number of gpus available
+  - `max_epochs`: (int) set max amount of epochs
 - `config` in `main` (dict containing all possible vars that can be varied)
   - `optimizer`: (str) adam or sgd,
   - `b1`, `b2`: (floats) betas for adam (if needed)
