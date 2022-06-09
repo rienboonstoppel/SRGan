@@ -12,18 +12,21 @@ from torchio.data.subject import Subject
 from torchio.transforms.intensity_transform import IntensityTransform
 import cv2
 
+
 def perc_norm(img3d, perc=95):
     max_val = np.percentile(img3d, perc)
-    img_norm = img3d.astype(float)  / max_val.astype(np.float32)
+    img_norm = img3d.astype(float) / max_val.astype(np.float32)
     return img_norm, max_val
 
 
 def select_slices(img, middle_slices, every_other=1, datasource='1mm_07mm'):
-    diff = (img.shape[2]-middle_slices)/2
-    if datasource == '2mm_1mm' or datasource == 'real':
-        img = img[:, :, int(np.ceil(diff)):img.shape[2]-int(np.floor(diff)):every_other]
-    elif datasource == '1mm_07mm':
-        img = img[:, :, int(np.ceil(diff))+20:img.shape[2]-int(np.floor(diff))+20:every_other]
+    diff = (img.shape[2] - middle_slices) / 2
+    img = img[:, :, int(np.ceil(diff)):img.shape[2] - int(np.floor(diff)):every_other]
+
+    # if datasource == '2mm_1mm' or datasource == 'real':
+    #     img = img[:, :, int(np.ceil(diff)):img.shape[2] - int(np.floor(diff)):every_other]
+    # elif datasource == '1mm_07mm':
+    #     img = img[:, :, int(np.ceil(diff)) + 20:img.shape[2] - int(np.floor(diff)) + 20:every_other]
     return img
 
 
@@ -62,11 +65,15 @@ class SimImagePair(object):
         self.to_nifty()
         if self.middle_slices == None:
             middle_slices = self.LR.get_fdata().shape[2]
-        else: middle_slices = self.middle_slices
+        else:
+            middle_slices = self.middle_slices
 
-        LR = select_slices(img = self.LR.get_fdata(), middle_slices=middle_slices, every_other=self.every_other, datasource=self.datasource)
-        HR = select_slices(img = self.HR.get_fdata(), middle_slices=middle_slices, every_other=self.every_other, datasource=self.datasource)
-        MSK = select_slices(img = self.MSK.get_fdata(), middle_slices=middle_slices, every_other=self.every_other, datasource=self.datasource)
+        LR = select_slices(img=self.LR.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
+                           datasource=self.datasource)
+        HR = select_slices(img=self.HR.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
+                           datasource=self.datasource)
+        MSK = select_slices(img=self.MSK.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
+                            datasource=self.datasource)
         MSK[MSK > 0] = 1
         MSK = cv2.erode(MSK, np.ones((10, 10)), iterations=3)
 
@@ -74,8 +81,8 @@ class SimImagePair(object):
         HR_norm, self.scaling_HR = perc_norm(HR)
 
         subject = tio.Subject(
-            LR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(LR_norm,0))),
-            HR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(HR_norm,0))),
+            LR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(LR_norm, 0))),
+            HR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(HR_norm, 0))),
             MSK=tio.LabelMap(tensor=torch.from_numpy(np.expand_dims(MSK, 0))),
         )
         return subject
@@ -94,6 +101,7 @@ class SimImagePair(object):
         }
         return img_info
 
+
 class RealImagePair(object):
     def __init__(self, number, root_dir='data', middle_slices=50, every_other=1):
         self._number = number
@@ -110,7 +118,7 @@ class RealImagePair(object):
         return LRf, HRf, MSKf
 
     def to_nifty(self):
-        LR_fname,HR_fname, MSK_fname = self.fnames()
+        LR_fname, HR_fname, MSK_fname = self.fnames()
         self.LR = nib.load(LR_fname)
         self.HR = nib.load(HR_fname)
         self.MSK = nib.load(MSK_fname)
@@ -120,11 +128,15 @@ class RealImagePair(object):
 
         if self.middle_slices == None:
             middle_slices = self.LR.get_fdata().shape[2]
-        else: middle_slices = self.middle_slices
+        else:
+            middle_slices = self.middle_slices
 
-        LR = select_slices(img = self.LR.get_fdata(), middle_slices=middle_slices, every_other=self.every_other, datasource='real')
-        HR = select_slices(img = self.HR.get_fdata(), middle_slices=middle_slices, every_other=self.every_other, datasource='real')
-        MSK = select_slices(img = self.MSK.get_fdata(), middle_slices=middle_slices, every_other=self.every_other, datasource='real')
+        LR = select_slices(img=self.LR.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
+                           datasource='real')
+        HR = select_slices(img=self.HR.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
+                           datasource='real')
+        MSK = select_slices(img=self.MSK.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
+                            datasource='real')
         MSK[MSK > 0] = 1
         MSK = cv2.erode(MSK, np.ones((10, 10)), iterations=3)
 
@@ -154,31 +166,31 @@ class RealImagePair(object):
 
 
 def sim_data(dataset,
-               datasource='1mm_07mm',
-               patients_frac=1,
-               train_frac=0.7,
-               val_frac=.15,
-               test_frac=.15,
-               middle_slices=50,
-               every_other=1,
-               root_dir='data',
-               randomseed=21011998):
+             datasource='1mm_07mm',
+             patients_frac=1,
+             train_frac=0.7,
+             val_frac=.15,
+             test_frac=.15,
+             middle_slices=50,
+             every_other=1,
+             root_dir='data',
+             randomseed=21011998):
     # define paths
     random.seed(randomseed)
     if datasource == '2mm_1mm':
-        path  = os.path.join(root_dir, "brain_simulated_t1w_mri", datasource, 'HR_img/')
+        path = os.path.join(root_dir, "brain_simulated_t1w_mri", datasource, 'HR_img/')
         fnames = glob(path + "*.nii.gz")
-        ids    = sorted(list(map(int, [(fnames[i][-60:-54]) for i in range(len(fnames))])))
+        ids = sorted(list(map(int, [(fnames[i][-60:-54]) for i in range(len(fnames))])))
     elif datasource == '1mm_07mm':
-        path  = os.path.join(root_dir, "brain_simulated_t1w_mri", datasource, 'HR_img/')
+        path = os.path.join(root_dir, "brain_simulated_t1w_mri", datasource, 'HR_img/')
         fnames = glob(path + "*.nii.gz")
-        ids    = sorted(list(map(int, [(fnames[i][-64:-58]) for i in range(len(fnames))])))
+        ids = sorted(list(map(int, [(fnames[i][-64:-58]) for i in range(len(fnames))])))
     # random.shuffle(ids)
 
     # define data splits
-    split1 = int(np.floor(patients_frac*train_frac*len(ids)))
-    split2 = split1+int(np.floor(patients_frac*val_frac*len(ids)))
-    split3 = split2+int(np.floor(patients_frac*test_frac*len(ids)))
+    split1 = int(np.floor(patients_frac * train_frac * len(ids)))
+    split2 = split1 + int(np.floor(patients_frac * val_frac * len(ids)))
+    split3 = split2 + int(np.floor(patients_frac * test_frac * len(ids)))
 
     if dataset == 'training':
         ids_split = ids[:split1]
@@ -199,9 +211,9 @@ def sim_data(dataset,
 
 
 def real_data(root_dir='data', middle_slices=50, every_other=1):
-    path   = root_dir + "/brain_real_t1w_mri/GT/"
+    path = root_dir + "/brain_real_t1w_mri/GT/"
     fnames = glob(path + "*.nii.gz")
-    ids    = sorted(list(map(int, [(fnames[i][-15:-14]) for i in range(len(fnames))])))
+    ids = sorted(list(map(int, [(fnames[i][-15:-14]) for i in range(len(fnames))])))
 
     # make arrays
     subjects = []
@@ -212,6 +224,7 @@ def real_data(root_dir='data', middle_slices=50, every_other=1):
         subjects.append(data.subject())
     return subjects
 
+
 def calculate_overlap(img, patch_size, ovl_perc):
     patch_size = np.array([patch_size[0], patch_size[1]])
     ovl_perc = np.array([ovl_perc[0], ovl_perc[1]])
@@ -221,7 +234,7 @@ def calculate_overlap(img, patch_size, ovl_perc):
     residual = sizeXY - (patch_size + (nr_patches - 1) * ovl_perc * patch_size)
     overlap = (patch_size * np.array(ovl_perc) + np.ceil(np.divide(residual, nr_patches))).astype(int)
     for i in range(len(overlap)):
-        overlap[i] = overlap[i]+1 if overlap[i] % 2 == 1 else overlap[i]
+        overlap[i] = overlap[i] + 1 if overlap[i] % 2 == 1 else overlap[i]
     return (*overlap, 0), nr_patches[0] * nr_patches[1] * size[3]
 
 
@@ -231,7 +244,7 @@ class Normalize(IntensityTransform):
             std,
             mean=0,
             **kwargs
-            ):
+    ):
         super().__init__(**kwargs)
         self.std = std
         self.mean = mean
@@ -245,7 +258,7 @@ class Normalize(IntensityTransform):
             self,
             subject: Subject,
             image_name: str,
-            ) -> None:
+    ) -> None:
         image = subject[image_name]
         standardized = self.znorm(
             image.data,

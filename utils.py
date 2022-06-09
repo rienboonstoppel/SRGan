@@ -11,7 +11,7 @@ import torch
 def print_config(config, args):
     print('Starting a run with config:')
 
-    print_args = ['name', 'root_dir', 'gan', 'no_checkpointing', 'num_workers',
+    print_args = ['name', 'root_dir', 'num_workers',
                   'gpus', 'max_epochs', 'max_time', 'precision', 'warmup_batches',
                   'std', 'middle_slices', 'every_other', 'sampler']
     print("{:<20}| {:<10}".format('Var', 'Value'))
@@ -22,51 +22,55 @@ def print_config(config, args):
     for arg in print_args:
         print("{:<20}| {:<10} ".format(arg, getattr(args, arg)))
 
-    # if args.gan:
-    #     print("{:<15}| {:<10} ".format('GAN', 'relativistic average'))
-    # else:
-    #     print("{:<15}| {:<10} ".format('GAN', 'vanilla'))
+    if args.gan:
+        print("{:<20}| {:<10} ".format('GAN', 'True'))
+    else:
+        print("{:<20}| {:<10} ".format('GAN', 'False'))
 
-
-def re_scale(img, std, max_val):
-    img *= std
-    img *= max_val
-    return img
+    if args.no_checkpointing:
+        print("{:<20}| {:<10} ".format('checkpointing', 'best only'))
+    else:
+        print("{:<20}| {:<10} ".format('checkpointing', 'best and time'))
 
 
 def save_to_nifti(img, header, fname, std, max_val, source):
-    affine = np.eye(4)
     if source == 'sim':
-        affine[2, 2] = 1/.7
-    # affine = np.array([[1, 0, 0, 0],
-    #                    [0, -1, 0, 0],
-    #                    [0, 0, 1 / .7, 0],
-    #                    [0, 0, 0, 1]])
+        affine = np.array([[-.7, 0, 0, 0],
+                           [0, -.7, 0, 0],
+                           [0, 0, 1, 0],
+                           [0, 0, 0, 1]])
+    elif source == 'real':
+        size = 0.7
+        affine = np.array([[size, 0, 0, 0],
+                           [0, size, 0, 0],
+                           [0, 0, 3, 0],
+                           [0, 0, 0, 1]])
     img = img.numpy()[0]
-    img = re_scale(img, std, max_val)
+    img *= max_val
     img_nifti = nib.Nifti1Image(img, affine=affine, header=header)
     nib.save(img_nifti, fname)
 
 
 def save_subject(subject, header, pref, std, max_vals, source, path='output'):
+    os.makedirs(path, exist_ok=True)
     save_to_nifti(img=subject['LR'],
                   header=header,
                   std=std,
-                  max_val=max_vals[0],
+                  max_val=max_vals['LR'],
                   fname=os.path.join(path, '{}_LR.nii.gz'.format(pref)),
                   source=source,
                   )
     save_to_nifti(img=subject['HR'],
                   header=header,
                   std=std,
-                  max_val=max_vals[1],
+                  max_val=max_vals['HR'],
                   fname=os.path.join(path, '{}_HR.nii.gz'.format(pref)),
                   source=source,
                   )
     save_to_nifti(img=subject['SR'],
                   header=header,
                   std=std,
-                  max_val=max_vals[2],
+                  max_val=max_vals['SR'],
                   fname=os.path.join(path, '{}_SR.nii.gz'.format(pref)),
                   source=source,
                   )
