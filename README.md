@@ -8,8 +8,9 @@ Run for training. Uses couple ways to get all the parameters
   - `num_workers`: (int) number of cpu cores available
   - `root_dir`: (str) root directory of main.py
   - `name`: (str) name of your training run
+  - `wandb_project`: (str) name of wandb project for logging
   - `warmup_batches`: (int) amount of batches the training will start with only pixel-loss
-  - `gan`: if flag present, training will run as adversarial loss, else not
+  - `gan`: if flag present, training will run with adversarial loss, else not
   - `no-checkpointing`: if flag present, only the best checkpoint (based on SSIM) will be saved, else every epoch
 - `Argparser` in `trainer` (data-specific arguments)
   - `std`: (float) std of data, for normalisation
@@ -17,7 +18,7 @@ Run for training. Uses couple ways to get all the parameters
   - `every_other`: (int) select every x other slices from subject 
   - `sampler`: (str) grid of label-sampler, for labelsampler, mask is required
 - `Argparser` builtin Pytorch Lighting 
-  - `gppus`: (int) number of gpus available
+  - `gpus`: (int) number of gpus available
   - `max_epochs`: (int) set max amount of epochs
 - `config` in `main` (dict containing all possible vars that can be varied)
   - `optimizer`: (str) adam or sgd,
@@ -35,7 +36,7 @@ Run for training. Uses couple ways to get all the parameters
   - `gan_mode`: (str) kind of adversarial loss (vanilla, lsgan, wgan) (if needed)
   - `edge_loss`: (int) kind of edge losse (1, 2, 3, see `edgeloss.py`)
   - `netD_freq`: (int) frequency the discriminator is trained vs the generator (if needed),
-  - `datasource`: (str) type of dataset, (1mm_07mm or 2mm-1mm)
+  - `data_resolution`: (str) type of dataset, (1mm_07mm or 2mm-1mm)
   - `patients_frac`: (float 0-1) percentage of data that will be used for training,
   - `patch_overlap`: (float 0-1) percentage of overlap for patches, if gridsampler,
   - `generator`: generator architecture (ESRGAN, RRDB, FSRCNN, DeepUResnet)
@@ -54,6 +55,7 @@ Baseclass for data, dataset is build using TorchIO, exploiting their patch-based
 
 Data is not present in this repo, but should be located in the `data` folder in root
 ```
+.
 ├── main.py
 ├── data                          # data-folder
 │   ├── brain_real_t1w_mri        # real data
@@ -72,4 +74,5 @@ Data is not present in this repo, but should be located in the `data` folder in 
 │   │   └── ... 
 │   └── ... 
 └── ...
+...
 ```

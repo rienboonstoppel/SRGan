@@ -5,34 +5,34 @@ metric:
   goal: maximize
   name: SSIM_mean
 parameters:
-  ragan:
-    values: [True, False]
-  gan_mode:
-    values: [vanilla, wgan]
+#  ragan:
+#    values: [True, False]
+#  gan_mode:
+#    values: [vanilla, wgan]
   generator:
-    values: [ESRGAN, RRDB, DeepUResnet]
-  alpha_edge:
-    distribution: uniform
-    min: 0.01
-    max: 1
-  alpha_pixel:
-    distribution: uniform
-    min: 0.01
-    max: 1
-  alpha_perceptual:
-    distribution: uniform
-    min: 0.01
-    max: 1
-  alpha_adversarial:
-    distribution: uniform
-    min: 0.01
-    max: 0.5
+    values: [ESRGAN, RRDB, DeepUResnet, FSRCNN]
+#  alpha_edge:
+#    distribution: uniform
+#    min: 0.01
+#    max: 1
+#  alpha_pixel:
+#    distribution: uniform
+#    min: 0.01
+#    max: 1
+#  alpha_perceptual:
+#    distribution: uniform
+#    min: 0.01
+#    max: 1
+#  alpha_adversarial:
+#    distribution: uniform
+#    min: 0.01
+#    max: 0.5
 command:
   - python
   - ${program}
   - --gpus=1
   - --log_every_n_steps=50
-  - --max_epochs=10
-  - --name=test
+  - --max_epochs=15
+  - --name=generator
   - --gan
   - --num_sanity_val_steps=0

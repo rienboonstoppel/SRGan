@@ -19,37 +19,37 @@ def perc_norm(img3d, perc=95):
     return img_norm, max_val
 
 
-def select_slices(img, middle_slices, every_other=1, datasource='1mm_07mm'):
+def select_slices(img, middle_slices, every_other=1, data_resolution='1mm_07mm'):
     diff = (img.shape[2] - middle_slices) / 2
     img = img[:, :, int(np.ceil(diff)):img.shape[2] - int(np.floor(diff)):every_other]
 
-    # if datasource == '2mm_1mm' or datasource == 'real':
+    # if data_resolution == '2mm_1mm' or data_resolution == 'real':
     #     img = img[:, :, int(np.ceil(diff)):img.shape[2] - int(np.floor(diff)):every_other]
-    # elif datasource == '1mm_07mm':
+    # elif data_resolution == '1mm_07mm':
     #     img = img[:, :, int(np.ceil(diff)) + 20:img.shape[2] - int(np.floor(diff)) + 20:every_other]
     return img
 
 
 class SimImagePair(object):
-    def __init__(self, number, root_dir='data', middle_slices=50, every_other=1, datasource='2mm_1mm'):
+    def __init__(self, number, root_dir='data', middle_slices=50, every_other=1, data_resolution='2mm_1mm'):
         self._number = number
         self.middle_slices = middle_slices
         self.every_other = every_other
-        self.datasource = datasource
-        self.path = os.path.join(root_dir, "brain_simulated_t1w_mri", datasource)
-        if datasource == '2mm_1mm':
+        self.data_resolution = data_resolution
+        self.path = os.path.join(root_dir, "brain_simulated_t1w_mri", data_resolution)
+        if data_resolution == '2mm_1mm':
             self.img_fname = "23-Aug-2021_Ernst_labels_{:06d}_" \
                              "3T_T1w_MPR1_img_act_1_contrast_1".format(self._number)
-        elif datasource == '1mm_07mm':
+        elif data_resolution == '1mm_07mm':
             self.img_fname = "08-Apr-2022_Ernst_labels_{:06d}_" \
                              "3T_T1w_MPR1_img_act_1_contrast_1".format(self._number)
 
     def fnames(self):
-        if self.datasource == '2mm_1mm':
+        if self.data_resolution == '2mm_1mm':
             LRf = path.join(self.path, 'LR_' + 'img', self.img_fname + "_Res_2_2_2_" + 'img' + ".nii.gz")
             HRf = path.join(self.path, 'HR_' + 'img', self.img_fname + "_Res_1_1_2_" + 'img' + ".nii.gz")
             MSKf = path.join(self.path, 'HR_' + 'msk', self.img_fname + "_Res_1_1_2_" + 'msk' + ".nii.gz")
-        elif self.datasource == '1mm_07mm':
+        elif self.data_resolution == '1mm_07mm':
             LRf = path.join(self.path, 'LR_' + 'img', self.img_fname + "_Res_1_1_1_" + 'img' + ".nii.gz")
             HRf = path.join(self.path, 'HR_' + 'img', self.img_fname + "_Res_0.7_0.7_1_" + 'img' + ".nii.gz")
             MSKf = path.join(self.path, 'HR_' + 'msk', self.img_fname + "_Res_0.7_0.7_1_" + 'msk' + ".nii.gz")
@@ -69,11 +69,11 @@ class SimImagePair(object):
             middle_slices = self.middle_slices
 
         LR = select_slices(img=self.LR.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
-                           datasource=self.datasource)
+                           data_resolution=self.data_resolution)
         HR = select_slices(img=self.HR.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
-                           datasource=self.datasource)
+                           data_resolution=self.data_resolution)
         MSK = select_slices(img=self.MSK.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
-                            datasource=self.datasource)
+                            data_resolution=self.data_resolution)
         MSK[MSK > 0] = 1
         MSK = cv2.erode(MSK, np.ones((10, 10)), iterations=3)
 
@@ -112,7 +112,7 @@ class RealImagePair(object):
         self.msk_fname = "p{:01d}_segm".format(self._number)
 
     def fnames(self):
-        LRf = path.join(self.path, 'LR', self.img_fname + ".nii.gz")
+        LRf = path.join(self.path, 'LR', self.img_fname + "_.nii.gz")
         HRf = path.join(self.path, 'GT', self.img_fname + ".nii.gz")
         MSKf = path.join(self.path, 'MSK', self.msk_fname + ".nii.gz")
         return LRf, HRf, MSKf
@@ -132,11 +132,11 @@ class RealImagePair(object):
             middle_slices = self.middle_slices
 
         LR = select_slices(img=self.LR.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
-                           datasource='real')
+                           data_resolution='real')
         HR = select_slices(img=self.HR.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
-                           datasource='real')
+                           data_resolution='real')
         MSK = select_slices(img=self.MSK.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
-                            datasource='real')
+                            data_resolution='real')
         MSK[MSK > 0] = 1
         MSK = cv2.erode(MSK, np.ones((10, 10)), iterations=3)
 
@@ -165,8 +165,49 @@ class RealImagePair(object):
         return img_info
 
 
+class HCPImagePair(RealImagePair):
+    def __init__(self, number, root_dir='data', middle_slices=50, every_other=1):
+        super().__init__(number, root_dir, middle_slices, every_other)
+        self._number = number
+        self._datasource = 'HCP'
+        self.path = os.path.join(root_dir, "brain_real_t1w_mri", self._datasource)
+        self.img_fname = "{:01d}_3T_T1w_MPR1".format(self._number)
+
+    def fnames(self):
+        LRf = path.join(self.path, 'LR', self.img_fname + "_img.nii.gz")
+        HRf = path.join(self.path, 'HR', self.img_fname + "_img.nii.gz")
+        MSKf = path.join(self.path, 'MSK', self.img_fname + "_img.nii.gz")
+        return LRf, HRf, MSKf
+
+    def to_nifty(self):
+        LR_fname, HR_fname, MSK_fname = self.fnames()
+        self.LR = nib.load(LR_fname)
+        self.HR = nib.load(HR_fname)
+
+    def subject(self):
+        self.to_nifty()
+
+        if self.middle_slices == None:
+            middle_slices = self.LR.get_fdata().shape[2]
+        else:
+            middle_slices = self.middle_slices
+
+        LR = select_slices(img=self.LR.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
+                           data_resolution='real')
+        HR = select_slices(img=self.HR.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
+                           data_resolution='real')
+        LR_norm, self.scaling_LR = perc_norm(LR)
+        HR_norm, self.scaling_HR = perc_norm(HR)
+
+        subject = tio.Subject(
+            LR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(LR_norm, 0))),
+            HR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(HR_norm, 0))),
+        )
+        return subject
+
+
 def sim_data(dataset,
-             datasource='1mm_07mm',
+             data_resolution='1mm_07mm',
              patients_frac=1,
              train_frac=0.7,
              val_frac=.15,
@@ -177,12 +218,12 @@ def sim_data(dataset,
              randomseed=21011998):
     # define paths
     random.seed(randomseed)
-    if datasource == '2mm_1mm':
-        path = os.path.join(root_dir, "brain_simulated_t1w_mri", datasource, 'HR_img/')
+    if data_resolution == '2mm_1mm':
+        path = os.path.join(root_dir, "brain_simulated_t1w_mri", data_resolution, 'HR_img/')
         fnames = glob(path + "*.nii.gz")
         ids = sorted(list(map(int, [(fnames[i][-60:-54]) for i in range(len(fnames))])))
-    elif datasource == '1mm_07mm':
-        path = os.path.join(root_dir, "brain_simulated_t1w_mri", datasource, 'HR_img/')
+    elif data_resolution == '1mm_07mm':
+        path = os.path.join(root_dir, "brain_simulated_t1w_mri", data_resolution, 'HR_img/')
         fnames = glob(path + "*.nii.gz")
         ids = sorted(list(map(int, [(fnames[i][-64:-58]) for i in range(len(fnames))])))
     # random.shuffle(ids)
@@ -205,7 +246,7 @@ def sim_data(dataset,
     # for num in tqdm(ids_split, desc='Load {} set\t'.format(dataset), bar_format='{l_bar}{bar:15}{r_bar}{bar:-15b}',
     #                 leave=True, position=0):
     for num in ids_split:
-        data = SimImagePair(num, root_dir, middle_slices, every_other, datasource)
+        data = SimImagePair(num, root_dir, middle_slices, every_other, data_resolution)
         subjects.append(data.subject())
     return subjects
 
@@ -221,6 +262,21 @@ def real_data(root_dir='data', middle_slices=50, every_other=1):
 
     for num in ids:
         data = RealImagePair(num, root_dir=root_dir, middle_slices=middle_slices, every_other=every_other)
+        subjects.append(data.subject())
+    return subjects
+
+
+def hcp_data(root_dir='data', middle_slices=50, every_other=1):
+    path = root_dir + "/brain_real_t1w_mri/HCP/HR/"
+    fnames = glob(path + "*.nii.gz")
+    ids = sorted(list(map(int, [(fnames[i][-29:-23]) for i in range(len(fnames))])))
+    print(ids)
+    # make arrays
+    subjects = []
+    print('Loading hcp dataset...')
+
+    for num in ids:
+        data = HCPImagePair(num, root_dir=root_dir, middle_slices=middle_slices, every_other=every_other)
         subjects.append(data.subject())
     return subjects
 

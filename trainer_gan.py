@@ -7,7 +7,7 @@ import torchio as tio
 import wandb
 from torchvision.utils import make_grid
 from edgeloss import edge_loss1, edge_loss2, edge_loss3
-from dataset_tio import sim_data, Normalize, calculate_overlap
+from dataset_tio import sim_data, Normalize, calculate_overlap, hcp_data
 from lightning_losses import GANLoss, GradientPenalty
 from utils import val_metrics, imgs_cat
 
@@ -51,7 +51,7 @@ class LitTrainer(pl.LightningModule):
 
         self.netD_freq = config.netD_freq
 
-        self.datasource = config.datasource
+        self.data_resolution = config.data_resolution
         self.patients_frac = config.patients_frac
         self.patch_overlap = config.patch_overlap
         self.batch_size = config.batch_size
@@ -247,7 +247,7 @@ class LitTrainer(pl.LightningModule):
                           'Q3': metrics['SSIM']['quartiles'][2],
                           },
                  on_epoch=True, sync_dist=True, prog_bar=False, batch_size=self.batch_size)
-        self.log('SSIM_mean', metrics['SSIM']['mean'], sync_dist=True)
+        self.log('SSIM_mean', metrics['SSIM']['mean'], sync_dist=True, prog_bar=True)
 
         self.log('NCC', {'Mean': metrics['NCC']['mean'],
                          'Q1': metrics['NCC']['quartiles'][0],
@@ -273,19 +273,19 @@ class LitTrainer(pl.LightningModule):
         train_subjects = sim_data(dataset='training',
                                   patients_frac=self.patients_frac,
                                   root_dir=data_path,
-                                  datasource=self.datasource,
+                                  data_resolution=self.data_resolution,
                                   middle_slices=args.middle_slices,
                                   every_other=args.every_other)
         val_subjects = sim_data(dataset='validation',
                                 patients_frac=self.patients_frac,
                                 root_dir=data_path,
-                                datasource=self.datasource,
+                                data_resolution=self.data_resolution,
                                 middle_slices=args.middle_slices,
                                 every_other=args.every_other)
         test_subjects = sim_data(dataset='test',
                                  patients_frac=self.patients_frac,
                                  root_dir=data_path,
-                                 datasource=self.datasource,
+                                 data_resolution=self.data_resolution,
                                  middle_slices=args.middle_slices,
                                  every_other=args.every_other)
 

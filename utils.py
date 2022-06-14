@@ -6,13 +6,14 @@ import cv2
 from skimage.metrics import structural_similarity as SSIM
 from skimage.metrics import normalized_root_mse as NRMSE
 import torch
+import torchio as tio
 
 
 def print_config(config, args):
     print('Starting a run with config:')
 
     print_args = ['name', 'root_dir', 'num_workers',
-                  'gpus', 'max_epochs', 'max_time', 'precision', 'warmup_batches',
+                  'gpus', 'max_epochs', 'precision', 'warmup_batches',  # 'max_time'
                   'std', 'middle_slices', 'every_other', 'sampler']
     print("{:<20}| {:<10}".format('Var', 'Value'))
     print('-' * 22)
@@ -163,6 +164,7 @@ def post_proc(img: torch.Tensor, bg_idx: np.ndarray, crop_coords: tuple) -> np.n
     img = img.squeeze(0)[min[0]:max[0] + 1, min[1]:max[1] + 1, min[2]:max[2] + 1].numpy()
     return img
 
+
 def imgs_cat(imgs_lr, imgs_hr, imgs_sr):
     imgs_lr = imgs_lr[:10].squeeze()
     imgs_hr = imgs_hr[:10].squeeze()
@@ -170,6 +172,7 @@ def imgs_cat(imgs_lr, imgs_hr, imgs_sr):
     diff = (imgs_hr - imgs_sr) * 2 + .5
     img_grid = torch.cat([imgs_lr, imgs_hr, imgs_sr, diff], dim=0).unsqueeze(1)
     return img_grid
+
 
 def val_metrics(output_data, HR_aggregator, SR_aggregator, std, post_proc_info):
     metrics = ['NCC', 'SSIM', 'NRMSE']
@@ -210,3 +213,20 @@ def val_metrics(output_data, HR_aggregator, SR_aggregator, std, post_proc_info):
             'quartiles': np.percentile(scores['NRMSE'], [25, 50, 75]),
         }
     }
+
+
+def get_mean_and_std(dataloader):
+    channels_sum, channels_squared_sum, num_batches = 0, 0, 0
+    for imgs in dataloader:
+        data = imgs['HR'][tio.DATA].squeeze(4)
+        # Mean over batch, height and width, but not over the channels
+        channels_sum += torch.mean(data, dim=[0, 2, 3])
+        channels_squared_sum += torch.mean(data ** 2, dim=[0, 2, 3])
+        num_batches += 1
+
+    mean = channels_sum / num_batches
+
+    # std = sqrt(E[X^2] - (E[X])^2)
+    std = (channels_squared_sum / num_batches - mean ** 2) ** 0.5
+
+    return mean, std

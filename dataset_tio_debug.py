@@ -18,25 +18,25 @@ def perc_norm(img3d, perc=95):
     return img_norm, max_val
 
 
-def slice_middle(img, numslices, datasource):
+def slice_middle(img, numslices, data_resolution):
     diff = (img.shape[2]-numslices)/2
-    if datasource == '2mm_1mm' or datasource == 'real':
+    if data_resolution == '2mm_1mm' or data_resolution == 'real':
         img = img[:, :, int(np.ceil(diff)):img.shape[2]-int(np.floor(diff))]
-    elif datasource == '1mm_07mm':
+    elif data_resolution == '1mm_07mm':
         img = img[:, :, int(np.ceil(diff))+20:img.shape[2]-int(np.floor(diff))]
     return img
 
 
 class ImagePair(object):
-    def __init__(self, number, root_dir='data', select_slices=50, datasource='2mm_1mm'):
+    def __init__(self, number, root_dir='data', select_slices=50, data_resolution='2mm_1mm'):
         self._number = number
         self.select_slices = select_slices
-        self.datasource = datasource
-        self.path = os.path.join(root_dir, "brain_simulated_t1w_mri", datasource)
-        if datasource == '2mm_1mm':
+        self.data_resolution = data_resolution
+        self.path = os.path.join(root_dir, "brain_simulated_t1w_mri", data_resolution)
+        if data_resolution == '2mm_1mm':
             self.img_fname = "23-Aug-2021_Ernst_labels_{:06d}_" \
                              "3T_T1w_MPR1_img_act_1_contrast_1".format(self._number)
-        elif datasource == '1mm_07mm':
+        elif data_resolution == '1mm_07mm':
             self.img_fname = "08-Apr-2022_Ernst_labels_{:06d}_" \
                              "3T_T1w_MPR1_img_act_1_contrast_1".format(self._number)
 
@@ -46,10 +46,10 @@ class ImagePair(object):
         else:
             suff = 'img'
 
-        if self.datasource == '2mm_1mm':
+        if self.data_resolution == '2mm_1mm':
             LRf = path.join(self.path, 'LR_' + suff, self.img_fname + "_Res_2_2_2_" + suff + ".nii.gz")
             HRf = path.join(self.path, 'HR_' + suff, self.img_fname + "_Res_1_1_2_" + suff + ".nii.gz")
-        elif self.datasource == '1mm_07mm':
+        elif self.data_resolution == '1mm_07mm':
             LRf = path.join(self.path, 'LR_' + suff, self.img_fname + "_Res_1_1_1_" + suff + ".nii.gz")
             HRf = path.join(self.path, 'HR_' + suff, self.img_fname + "_Res_0.7_0.7_1_" + suff + ".nii.gz")
         return LRf, HRf
@@ -66,11 +66,11 @@ class ImagePair(object):
     def subject(self):
         self.to_nifty()
         if self.select_slices is not None:
-            LR = slice_middle(self.LR.get_fdata(), self.select_slices, datasource=self.datasource)#[:,:,::2]
-            HR = slice_middle(self.HR.get_fdata(), self.select_slices, datasource=self.datasource)#[:,:,::2]
-            LR_msk = slice_middle(self.LR_msk.get_fdata(), self.select_slices, datasource=self.datasource)#[:,:,::2]
-            HR_msk = slice_middle(self.HR_msk.get_fdata(), self.select_slices, datasource=self.datasource)#[:,:,::2]
-            HR_msk_binary = slice_middle(self.HR_msk_binary.get_fdata(), self.select_slices, datasource=self.datasource)#[:,:,::2]
+            LR = slice_middle(self.LR.get_fdata(), self.select_slices, data_resolution=self.data_resolution)#[:,:,::2]
+            HR = slice_middle(self.HR.get_fdata(), self.select_slices, data_resolution=self.data_resolution)#[:,:,::2]
+            LR_msk = slice_middle(self.LR_msk.get_fdata(), self.select_slices, data_resolution=self.data_resolution)#[:,:,::2]
+            HR_msk = slice_middle(self.HR_msk.get_fdata(), self.select_slices, data_resolution=self.data_resolution)#[:,:,::2]
+            HR_msk_binary = slice_middle(self.HR_msk_binary.get_fdata(), self.select_slices, data_resolution=self.data_resolution)#[:,:,::2]
             HR_msk_binary[HR_msk_binary>0]=1
             HR_msk_binary = cv2.erode(HR_msk_binary, np.ones((10, 10)), iterations=3)
 
@@ -136,11 +136,11 @@ class RealImage(object):
     def subject(self):
         self.to_nifty()
         if self.select_slices is not None:
-            LR = slice_middle(self.LR.get_fdata(), self.select_slices, datasource='real')
-            NN = slice_middle(self.NN.get_fdata(), self.select_slices, datasource='real')
-            CB = slice_middle(self.CB.get_fdata()-self.CB.get_fdata()[0,0,0], self.select_slices, datasource='real')
-            GT = slice_middle(self.GT.get_fdata(), self.select_slices, datasource='real')
-            MSK = slice_middle(self.MSK.get_fdata(), self.select_slices, datasource='real')
+            LR = slice_middle(self.LR.get_fdata(), self.select_slices, data_resolution='real')
+            NN = slice_middle(self.NN.get_fdata(), self.select_slices, data_resolution='real')
+            CB = slice_middle(self.CB.get_fdata()-self.CB.get_fdata()[0,0,0], self.select_slices, data_resolution='real')
+            GT = slice_middle(self.GT.get_fdata(), self.select_slices, data_resolution='real')
+            MSK = slice_middle(self.MSK.get_fdata(), self.select_slices, data_resolution='real')
         else:
             LR = self.LR.get_fdata()
             NN = self.NN.get_fdata()
@@ -177,16 +177,16 @@ class RealImage(object):
         return img_info
 
 
-def data_split(dataset, datasource='1mm_07mm', patients_frac=1, train_frac=0.7, val_frac=.15, test_frac=.15, numslices=50, root_dir='data',
+def data_split(dataset, data_resolution='1mm_07mm', patients_frac=1, train_frac=0.7, val_frac=.15, test_frac=.15, numslices=50, root_dir='data',
                randomseed=21011998):
     # define paths
     random.seed(randomseed)
-    if datasource == '2mm_1mm':
-        path  = os.path.join(root_dir, "brain_simulated_t1w_mri", datasource, 'HR_img/')
+    if data_resolution == '2mm_1mm':
+        path  = os.path.join(root_dir, "brain_simulated_t1w_mri", data_resolution, 'HR_img/')
         fnames = glob(path + "*.nii.gz")
         ids    = sorted(list(map(int, [(fnames[i][-60:-54]) for i in range(len(fnames))])))
-    elif datasource == '1mm_07mm':
-        path  = os.path.join(root_dir, "brain_simulated_t1w_mri", datasource, 'HR_img/')
+    elif data_resolution == '1mm_07mm':
+        path  = os.path.join(root_dir, "brain_simulated_t1w_mri", data_resolution, 'HR_img/')
         fnames = glob(path + "*.nii.gz")
         ids    = sorted(list(map(int, [(fnames[i][-64:-58]) for i in range(len(fnames))])))
     # random.shuffle(ids)
@@ -209,7 +209,7 @@ def data_split(dataset, datasource='1mm_07mm', patients_frac=1, train_frac=0.7, 
     # for num in tqdm(ids_split, desc='Load {} set\t'.format(dataset), bar_format='{l_bar}{bar:15}{r_bar}{bar:-15b}',
     #                 leave=True, position=0):
     for num in ids_split:
-        data = ImagePair(num, root_dir=root_dir, select_slices=numslices, datasource=datasource)
+        data = ImagePair(num, root_dir=root_dir, select_slices=numslices, data_resolution=data_resolution)
         subjects.append(data.subject())
     return subjects
 

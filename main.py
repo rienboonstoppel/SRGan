@@ -11,10 +11,14 @@ import pytorch_lightning as pl
 from argparse import ArgumentParser
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from datetime import timedelta
 from utils import print_config
 from pytorch_lightning.loggers import WandbLogger
 import wandb
+import warnings
+
+warnings.filterwarnings('ignore', '.*wandb run already in progress.*')
 
 ### Single config ###
 default_config = {
@@ -23,8 +27,8 @@ default_config = {
     'b2': 0.5,
     'batch_size': 16,
     'num_filters': 64,
-    'learning_rate_G': 1e-3,
-    'learning_rate_D': 1e-3,
+    'learning_rate_G': 2e-5,
+    'learning_rate_D': 2e-5,
     'patch_size': 64,
     'alpha_edge': 0.3,
     'alpha_pixel': 0.7,
@@ -35,9 +39,9 @@ default_config = {
     'edge_loss': 2,
     'netD_freq': 1,
     'datasource': '1mm_07mm',
-    'patients_frac': .3,
+    'patients_frac': .5,
     'patch_overlap': 0.5,
-    'generator': 'FSRCNN'
+    'generator': 'ESRGAN'
 }
 
 
@@ -49,6 +53,7 @@ def main(default_config):
     parser.add_argument('--root_dir', default='/mnt/beta/djboonstoppel/Code', type=str)
     parser.add_argument('--warmup_batches', default=2500, type=int)
     parser.add_argument('--name', required=True, type=str)
+    parser.add_argument('--wandb_project', default='sweep', type=str)
     parser.add_argument('--gan', action='store_true')
     parser.add_argument('--no_checkpointing', action='store_true')
     parser.set_defaults(gan=False)
@@ -64,8 +69,11 @@ def main(default_config):
     else:
         parser = LitTrainer_org.add_model_specific_args(parser)
         args = parser.parse_args()
-
-    wandb.init(config=default_config, project='afstuderen', name=args.name)
+    os.makedirs(os.path.join(args.root_dir, 'log', args.name), exist_ok=True)
+    wandb.init(config=default_config,
+               project=args.wandb_project,
+               name=args.name+'_'+default_config['generator'],
+               dir=os.path.join(args.root_dir, 'log', args.name))
     config = wandb.config
 
     print_config(config.as_dict(), args)
@@ -85,33 +93,40 @@ def main(default_config):
     discriminator = Discriminator(input_shape=(1, config.patch_size, config.patch_size))
     feature_extractor = FeatureExtractor()
 
-    os.makedirs(os.path.join(args.root_dir, 'log', args.name), exist_ok=True)
-    logger = WandbLogger(project='afstuderen',
-                         name=args.name,
+    logger = WandbLogger(project=args.wandb_project,
+                         name=args.name+'_'+config.generator,
                          save_dir=os.path.join(args.root_dir, 'log', args.name),
                          log_model=False, )
 
     lr_monitor = LearningRateMonitor(logging_interval='step')
+
+    early_stop_callback = EarlyStopping(monitor='val_loss',
+                                        min_delta=0.00,
+                                        patience=15,
+                                        verbose=False,
+                                        mode='min',
+                                        check_finite=True)
+
     checkpoint_callback_best = ModelCheckpoint(
         monitor="SSIM_mean",
         dirpath=os.path.join(args.root_dir, 'log', args.name),
-        filename=args.name + "-checkpoint-best",
+        filename=args.name + config.generator + "-checkpoint-best",
         save_top_k=1,
         mode="max",
     )
 
     checkpoint_callback_time = ModelCheckpoint(
         dirpath=os.path.join(args.root_dir, 'log', args.name),
-        filename=args.name + "-checkpoint-{epoch}",
+        filename=args.name + config.generator + "-checkpoint-{epoch}",
         save_top_k=-1,
         # train_time_interval=timedelta(minutes=2),
         every_n_epochs=1,
     )
 
     if args.no_checkpointing:
-        callbacks = [lr_monitor, checkpoint_callback_best]
+        callbacks = [lr_monitor, early_stop_callback, checkpoint_callback_best]
     else:
-        callbacks = [lr_monitor, checkpoint_callback_best, checkpoint_callback_time]
+        callbacks = [lr_monitor, early_stop_callback, checkpoint_callback_best, checkpoint_callback_time]
 
     if args.gan:
         model = LitTrainer_gan(netG=generator, netF=feature_extractor, netD=discriminator, args=args, config=config)

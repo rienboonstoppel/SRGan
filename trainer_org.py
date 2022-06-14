@@ -42,7 +42,7 @@ class LitTrainer(pl.LightningModule):
         self.criterion_perceptual = torch.nn.L1Loss()  # method to calculate differences between vgg features
         self.criterion_edge = globals()['edge_loss' + str(config.edge_loss)]
 
-        self.datasource = config.datasource
+        self.data_resolution = config.data_resolution
         self.patients_frac = config.patients_frac
         self.patch_overlap = config.patch_overlap
         self.batch_size = config.batch_size
@@ -184,19 +184,19 @@ class LitTrainer(pl.LightningModule):
         train_subjects = sim_data(dataset='training',
                                   patients_frac=self.patients_frac,
                                   root_dir=data_path,
-                                  datasource=self.datasource,
+                                  data_resolution=self.data_resolution,
                                   middle_slices=args.middle_slices,
                                   every_other=args.every_other)
         val_subjects = sim_data(dataset='validation',
                                 patients_frac=self.patients_frac,
                                 root_dir=data_path,
-                                datasource=self.datasource,
+                                data_resolution=self.data_resolution,
                                 middle_slices=args.middle_slices,
                                 every_other=args.every_other)
         test_subjects = sim_data(dataset='test',
                                  patients_frac=self.patients_frac,
                                  root_dir=data_path,
-                                 datasource=self.datasource,
+                                 data_resolution=self.data_resolution,
                                  middle_slices=args.middle_slices,
                                  every_other=args.every_other)
 
