@@ -1,4 +1,5 @@
 import os
+from abc import abstractmethod
 from os import path
 import numpy as np
 import nibabel as nib
@@ -19,192 +20,125 @@ def perc_norm(img3d, perc=95):
     return img_norm, max_val
 
 
-def select_slices(img, middle_slices, every_other=1, data_resolution='1mm_07mm'):
+def select_slices(img, middle_slices, every_other=1):
     diff = (img.shape[2] - middle_slices) / 2
     img = img[:, :, int(np.ceil(diff)):img.shape[2] - int(np.floor(diff)):every_other]
-
-    # if data_resolution == '2mm_1mm' or data_resolution == 'real':
-    #     img = img[:, :, int(np.ceil(diff)):img.shape[2] - int(np.floor(diff)):every_other]
-    # elif data_resolution == '1mm_07mm':
-    #     img = img[:, :, int(np.ceil(diff)) + 20:img.shape[2] - int(np.floor(diff)) + 20:every_other]
     return img
 
 
-class SimImagePair(object):
-    def __init__(self, number, root_dir='data', middle_slices=50, every_other=1, data_resolution='2mm_1mm'):
-        self._number = number
+class Image(object):
+    def __init__(self, middle_slices, every_other):
         self.middle_slices = middle_slices
         self.every_other = every_other
+
+    @abstractmethod
+    def fnames(self):
+        pass
+
+    def to_nifty(self):
+        lr_fname, hr_fname, msk_fname = self.fnames()
+        lr = nib.load(lr_fname)
+        hr = nib.load(hr_fname)
+        msk = nib.load(msk_fname)
+        return lr, hr, msk
+
+    def subject(self):
+        lr_nib, hr_nib, msk_nib = self.to_nifty()
+        if self.middle_slices is None:
+            middle_slices = lr_nib.get_fdata().shape[2]
+        else:
+            middle_slices = self.middle_slices
+
+        lr = select_slices(img=lr_nib.get_fdata(),
+                           middle_slices=middle_slices,
+                           every_other=self.every_other)
+        hr = select_slices(img=hr_nib.get_fdata(),
+                           middle_slices=middle_slices,
+                           every_other=self.every_other)
+        msk = select_slices(img=msk_nib.get_fdata(),
+                            middle_slices=middle_slices,
+                            every_other=self.every_other)
+        if ((msk==0) | (msk==1)).all():
+            pass
+        else:
+            msk[msk > 0] = 1
+            msk = cv2.erode(msk, np.ones((10, 10)), iterations=3)
+
+        lr_norm, self.scaling_LR = perc_norm(lr)
+        hr_norm, self.scaling_HR = perc_norm(hr)
+
+        subject = tio.Subject(
+            LR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(lr_norm, 0))),
+            HR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(hr_norm, 0))),
+            MSK=tio.LabelMap(tensor=torch.from_numpy(np.expand_dims(msk, 0))),
+        )
+        return subject
+
+    def info(self):
+        lr_nib, hr_nib, msk_nib = self.to_nifty()
+        img_info = {
+            'LR': {
+                'header': lr_nib.header,
+                'scaling': self.scaling_LR,
+            },
+            'HR': {
+                'header': hr_nib.header,
+                'scaling': self.scaling_HR,
+            }
+        }
+        return img_info
+
+
+class SimImage(Image):
+    def __init__(self, number, root_dir='data', middle_slices=50, every_other=1, data_resolution='2mm_1mm'):
+        super().__init__(middle_slices, every_other)
         self.data_resolution = data_resolution
         self.path = os.path.join(root_dir, "brain_simulated_t1w_mri", data_resolution)
         if data_resolution == '2mm_1mm':
             self.img_fname = "23-Aug-2021_Ernst_labels_{:06d}_" \
-                             "3T_T1w_MPR1_img_act_1_contrast_1".format(self._number)
+                             "3T_T1w_MPR1_img_act_1_contrast_1".format(number)
         elif data_resolution == '1mm_07mm':
             self.img_fname = "08-Apr-2022_Ernst_labels_{:06d}_" \
-                             "3T_T1w_MPR1_img_act_1_contrast_1".format(self._number)
+                             "3T_T1w_MPR1_img_act_1_contrast_1".format(number)
 
     def fnames(self):
         if self.data_resolution == '2mm_1mm':
-            LRf = path.join(self.path, 'LR_' + 'img', self.img_fname + "_Res_2_2_2_" + 'img' + ".nii.gz")
-            HRf = path.join(self.path, 'HR_' + 'img', self.img_fname + "_Res_1_1_2_" + 'img' + ".nii.gz")
-            MSKf = path.join(self.path, 'HR_' + 'msk', self.img_fname + "_Res_1_1_2_" + 'msk' + ".nii.gz")
+            lr_fname = path.join(self.path, 'LR_' + 'img', self.img_fname + "_Res_2_2_2_" + 'img' + ".nii.gz")
+            hr_fname = path.join(self.path, 'HR_' + 'img', self.img_fname + "_Res_1_1_2_" + 'img' + ".nii.gz")
+            msk_fname = path.join(self.path, 'HR_' + 'msk', self.img_fname + "_Res_1_1_2_" + 'msk' + ".nii.gz")
         elif self.data_resolution == '1mm_07mm':
-            LRf = path.join(self.path, 'LR_' + 'img', self.img_fname + "_Res_1_1_1_" + 'img' + ".nii.gz")
-            HRf = path.join(self.path, 'HR_' + 'img', self.img_fname + "_Res_0.7_0.7_1_" + 'img' + ".nii.gz")
-            MSKf = path.join(self.path, 'HR_' + 'msk', self.img_fname + "_Res_0.7_0.7_1_" + 'msk' + ".nii.gz")
-        return LRf, HRf, MSKf
-
-    def to_nifty(self):
-        LR_fname, HR_fname, MSK_fname = self.fnames()
-        self.LR = nib.load(LR_fname)
-        self.HR = nib.load(HR_fname)
-        self.MSK = nib.load(MSK_fname)
-
-    def subject(self):
-        self.to_nifty()
-        if self.middle_slices == None:
-            middle_slices = self.LR.get_fdata().shape[2]
+            lr_fname = path.join(self.path, 'LR_' + 'img', self.img_fname + "_Res_1_1_1_" + 'img' + ".nii.gz")
+            hr_fname = path.join(self.path, 'HR_' + 'img', self.img_fname + "_Res_0.7_0.7_1_" + 'img' + ".nii.gz")
+            msk_fname = path.join(self.path, 'HR_' + 'msk', self.img_fname + "_Res_0.7_0.7_1_" + 'msk' + ".nii.gz")
         else:
-            middle_slices = self.middle_slices
+            raise ValueError("Resolution '{}' not recognized or available, choose '2mm_1mm' or '1mm_07mm' instead".format(self.data_resolution))
+        return lr_fname, hr_fname, msk_fname
 
-        LR = select_slices(img=self.LR.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
-                           data_resolution=self.data_resolution)
-        HR = select_slices(img=self.HR.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
-                           data_resolution=self.data_resolution)
-        MSK = select_slices(img=self.MSK.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
-                            data_resolution=self.data_resolution)
-        MSK[MSK > 0] = 1
-        MSK = cv2.erode(MSK, np.ones((10, 10)), iterations=3)
-
-        LR_norm, self.scaling_LR = perc_norm(LR)
-        HR_norm, self.scaling_HR = perc_norm(HR)
-
-        subject = tio.Subject(
-            LR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(LR_norm, 0))),
-            HR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(HR_norm, 0))),
-            MSK=tio.LabelMap(tensor=torch.from_numpy(np.expand_dims(MSK, 0))),
-        )
-        return subject
-
-    def info(self):
-        self.to_nifty()
-        img_info = {
-            'LR': {
-                'header': self.LR.header,
-                'scaling': self.scaling_LR,
-            },
-            'HR': {
-                'header': self.HR.header,
-                'scaling': self.scaling_HR,
-            }
-        }
-        return img_info
-
-
-class RealImagePair(object):
+class MRBrainS18Image(Image):
     def __init__(self, number, root_dir='data', middle_slices=50, every_other=1):
-        self._number = number
-        self.middle_slices = middle_slices
-        self.every_other = every_other
-        self.path = root_dir + "/brain_real_t1w_mri"
-        self.img_fname = "p{:01d}_reg_T1".format(self._number)
-        self.msk_fname = "p{:01d}_segm".format(self._number)
+        super().__init__(middle_slices, every_other)
+        self.path = os.path.join(root_dir, 'brain_real_t1w_mri', 'MRBrainS18')
+        self.img_fname = "p{:01d}_reg_T1".format(number)
+        self.msk_fname = "p{:01d}_segm".format(number)
 
     def fnames(self):
-        LRf = path.join(self.path, 'LR', self.img_fname + "_.nii.gz")
-        HRf = path.join(self.path, 'GT', self.img_fname + ".nii.gz")
-        MSKf = path.join(self.path, 'MSK', self.msk_fname + ".nii.gz")
-        return LRf, HRf, MSKf
+        lr_fname = path.join(self.path, 'LR', self.img_fname + ".nii.gz")
+        hr_fname = path.join(self.path, 'GT', self.img_fname + ".nii.gz")
+        msk_fname = path.join(self.path, 'MSK', self.msk_fname + ".nii.gz")
+        return lr_fname, hr_fname, msk_fname
 
-    def to_nifty(self):
-        LR_fname, HR_fname, MSK_fname = self.fnames()
-        self.LR = nib.load(LR_fname)
-        self.HR = nib.load(HR_fname)
-        self.MSK = nib.load(MSK_fname)
-
-    def subject(self):
-        self.to_nifty()
-
-        if self.middle_slices == None:
-            middle_slices = self.LR.get_fdata().shape[2]
-        else:
-            middle_slices = self.middle_slices
-
-        LR = select_slices(img=self.LR.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
-                           data_resolution='real')
-        HR = select_slices(img=self.HR.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
-                           data_resolution='real')
-        MSK = select_slices(img=self.MSK.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
-                            data_resolution='real')
-        MSK[MSK > 0] = 1
-        MSK = cv2.erode(MSK, np.ones((10, 10)), iterations=3)
-
-        LR_norm, self.scaling_LR = perc_norm(LR)
-        HR_norm, self.scaling_HR = perc_norm(HR)
-
-        subject = tio.Subject(
-            LR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(LR_norm, 0))),
-            HR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(HR_norm, 0))),
-            MSK=tio.LabelMap(tensor=torch.from_numpy(np.expand_dims(MSK, 0))),
-        )
-        return subject
-
-    def info(self):
-        self.to_nifty()
-        img_info = {
-            'LR': {
-                'header': self.LR.header,
-                'scaling': self.scaling_LR,
-            },
-            'HR': {
-                'header': self.HR.header,
-                'scaling': self.scaling_HR,
-            }
-        }
-        return img_info
-
-
-class HCPImagePair(RealImagePair):
+class HCPImage(Image):
     def __init__(self, number, root_dir='data', middle_slices=50, every_other=1):
-        super().__init__(number, root_dir, middle_slices, every_other)
-        self._number = number
-        self._datasource = 'HCP'
-        self.path = os.path.join(root_dir, "brain_real_t1w_mri", self._datasource)
-        self.img_fname = "{:01d}_3T_T1w_MPR1".format(self._number)
+        super().__init__(middle_slices, every_other)
+        self.path = os.path.join(root_dir, 'brain_real_t1w_mri', 'HCP')
+        self.img_fname = "{:01d}_3T_T1w_MPR1_img".format(number)
+        self.msk_fname = "labels_{:01d}_3T_T1w_MPR1_img".format(number)
 
     def fnames(self):
-        LRf = path.join(self.path, 'LR', self.img_fname + "_img.nii.gz")
-        HRf = path.join(self.path, 'HR', self.img_fname + "_img.nii.gz")
-        MSKf = path.join(self.path, 'MSK', self.img_fname + "_img.nii.gz")
-        return LRf, HRf, MSKf
-
-    def to_nifty(self):
-        LR_fname, HR_fname, MSK_fname = self.fnames()
-        self.LR = nib.load(LR_fname)
-        self.HR = nib.load(HR_fname)
-
-    def subject(self):
-        self.to_nifty()
-
-        if self.middle_slices == None:
-            middle_slices = self.LR.get_fdata().shape[2]
-        else:
-            middle_slices = self.middle_slices
-
-        LR = select_slices(img=self.LR.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
-                           data_resolution='real')
-        HR = select_slices(img=self.HR.get_fdata(), middle_slices=middle_slices, every_other=self.every_other,
-                           data_resolution='real')
-        LR_norm, self.scaling_LR = perc_norm(LR)
-        HR_norm, self.scaling_HR = perc_norm(HR)
-
-        subject = tio.Subject(
-            LR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(LR_norm, 0))),
-            HR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(HR_norm, 0))),
-        )
-        return subject
-
+        lr_fname = path.join(self.path, 'LR', self.img_fname + ".nii.gz")
+        hr_fname = path.join(self.path, 'HR', self.img_fname + ".nii.gz")
+        msk_fname = path.join(self.path, 'MSK', self.msk_fname + ".nii.gz")
+        return lr_fname, hr_fname, msk_fname
 
 def sim_data(dataset,
              data_resolution='1mm_07mm',
@@ -239,6 +173,7 @@ def sim_data(dataset,
         ids_split = ids[split1:split2]
     elif dataset == 'test':
         ids_split = ids[split2:split3]
+    else: raise ValueError("Dataset '{}' not recognized, use 'training, 'validation' or 'test' instead".format(dataset))
 
     # make arrays
     subjects = []
@@ -246,37 +181,57 @@ def sim_data(dataset,
     # for num in tqdm(ids_split, desc='Load {} set\t'.format(dataset), bar_format='{l_bar}{bar:15}{r_bar}{bar:-15b}',
     #                 leave=True, position=0):
     for num in ids_split:
-        data = SimImagePair(num, root_dir, middle_slices, every_other, data_resolution)
+        data = SimImage(num, root_dir, middle_slices, every_other, data_resolution)
         subjects.append(data.subject())
     return subjects
 
 
-def real_data(root_dir='data', middle_slices=50, every_other=1):
-    path = root_dir + "/brain_real_t1w_mri/GT/"
+def MRBrainS18_data(root_dir='data', middle_slices=50, every_other=1):
+    path = root_dir + "/brain_real_t1w_mri/MRBrainS18/GT/"
     fnames = glob(path + "*.nii.gz")
     ids = sorted(list(map(int, [(fnames[i][-15:-14]) for i in range(len(fnames))])))
-
     # make arrays
     subjects = []
-    print('Loading real dataset...')
+    print('Loading MRBrainS18 dataset...')
 
     for num in ids:
-        data = RealImagePair(num, root_dir=root_dir, middle_slices=middle_slices, every_other=every_other)
+        data = MRBrainS18Image(num, root_dir=root_dir, middle_slices=middle_slices, every_other=every_other)
         subjects.append(data.subject())
     return subjects
 
 
-def hcp_data(root_dir='data', middle_slices=50, every_other=1):
+def HCP_data(dataset,
+             root_dir='data',
+             middle_slices=50,
+             every_other=1,
+             patients_frac=1,
+             train_frac=0.7,
+             val_frac=.15,
+             test_frac=.15,
+             ):
     path = root_dir + "/brain_real_t1w_mri/HCP/HR/"
     fnames = glob(path + "*.nii.gz")
     ids = sorted(list(map(int, [(fnames[i][-29:-23]) for i in range(len(fnames))])))
-    print(ids)
+
+    # define data splits
+    split1 = int(np.floor(patients_frac * train_frac * len(ids)))
+    split2 = split1 + int(np.floor(patients_frac * val_frac * len(ids)))
+    split3 = split2 + int(np.floor(patients_frac * test_frac * len(ids)))
+
+    if dataset == 'training':
+        ids_split = ids[:split1]
+    elif dataset == 'validation':
+        ids_split = ids[split1:split2]
+    elif dataset == 'test':
+        ids_split = ids[split2:split3]
+    else: raise ValueError("Dataset '{}' not recognized, use 'training, 'validation' or 'test' instead".format(dataset))
+
     # make arrays
     subjects = []
-    print('Loading hcp dataset...')
+    print('Loading HCP {} set...'.format(dataset))
 
-    for num in ids:
-        data = HCPImagePair(num, root_dir=root_dir, middle_slices=middle_slices, every_other=every_other)
+    for num in ids_split:
+        data = HCPImage(num, root_dir=root_dir, middle_slices=middle_slices, every_other=every_other)
         subjects.append(data.subject())
     return subjects
 

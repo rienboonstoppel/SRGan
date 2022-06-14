@@ -38,8 +38,8 @@ default_config = {
     'gan_mode': 'vanilla',
     'edge_loss': 2,
     'netD_freq': 1,
-    'datasource': '1mm_07mm',
-    'patients_frac': .5,
+    'data_resolution': '1mm_07mm',
+    'patients_frac': 1,
     'patch_overlap': 0.5,
     'generator': 'ESRGAN'
 }
@@ -53,7 +53,7 @@ def main(default_config):
     parser.add_argument('--root_dir', default='/mnt/beta/djboonstoppel/Code', type=str)
     parser.add_argument('--warmup_batches', default=2500, type=int)
     parser.add_argument('--name', required=True, type=str)
-    parser.add_argument('--wandb_project', default='sweep', type=str)
+    parser.add_argument('--wandb_project', default='afstuderen', type=str)
     parser.add_argument('--gan', action='store_true')
     parser.add_argument('--no_checkpointing', action='store_true')
     parser.set_defaults(gan=False)
@@ -72,7 +72,7 @@ def main(default_config):
     os.makedirs(os.path.join(args.root_dir, 'log', args.name), exist_ok=True)
     wandb.init(config=default_config,
                project=args.wandb_project,
-               name=args.name+'_'+default_config['generator'],
+               name=args.name,
                dir=os.path.join(args.root_dir, 'log', args.name))
     config = wandb.config
 
@@ -94,7 +94,7 @@ def main(default_config):
     feature_extractor = FeatureExtractor()
 
     logger = WandbLogger(project=args.wandb_project,
-                         name=args.name+'_'+config.generator,
+                         name=args.name,
                          save_dir=os.path.join(args.root_dir, 'log', args.name),
                          log_model=False, )
 
@@ -117,7 +117,7 @@ def main(default_config):
 
     checkpoint_callback_time = ModelCheckpoint(
         dirpath=os.path.join(args.root_dir, 'log', args.name),
-        filename=args.name + config.generator + "-checkpoint-{epoch}",
+        filename=args.name + "-checkpoint-{epoch}",
         save_top_k=-1,
         # train_time_interval=timedelta(minutes=2),
         every_n_epochs=1,

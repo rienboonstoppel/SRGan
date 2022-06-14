@@ -40,7 +40,7 @@ def save_to_nifti(img, header, fname, std, max_val, source):
                            [0, -.7, 0, 0],
                            [0, 0, 1, 0],
                            [0, 0, 0, 1]])
-    elif source == 'real':
+    elif source == 'mrbrains18': #TODO fix
         size = 0.7
         affine = np.array([[size, 0, 0, 0],
                            [0, size, 0, 0],

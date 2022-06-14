@@ -7,7 +7,7 @@ import torchio as tio
 import wandb
 from torchvision.utils import make_grid
 from edgeloss import edge_loss1, edge_loss2, edge_loss3
-from dataset_tio import sim_data, Normalize, calculate_overlap, hcp_data
+from dataset_tio import sim_data, Normalize, calculate_overlap, HCP_data
 from lightning_losses import GANLoss, GradientPenalty
 from utils import val_metrics, imgs_cat
 
@@ -270,22 +270,22 @@ class LitTrainer(pl.LightningModule):
     def setup(self, stage='fit'):
         args = self.args
         data_path = os.path.join(args.root_dir, 'data')
-        train_subjects = sim_data(dataset='training',
+        train_subjects = HCP_data(dataset='training',
                                   patients_frac=self.patients_frac,
                                   root_dir=data_path,
-                                  data_resolution=self.data_resolution,
+                                  # data_resolution=self.data_resolution,
                                   middle_slices=args.middle_slices,
                                   every_other=args.every_other)
-        val_subjects = sim_data(dataset='validation',
+        val_subjects = HCP_data(dataset='validation',
                                 patients_frac=self.patients_frac,
                                 root_dir=data_path,
-                                data_resolution=self.data_resolution,
+                                # data_resolution=self.data_resolution,
                                 middle_slices=args.middle_slices,
                                 every_other=args.every_other)
-        test_subjects = sim_data(dataset='test',
+        test_subjects = HCP_data(dataset='test',
                                  patients_frac=self.patients_frac,
                                  root_dir=data_path,
-                                 data_resolution=self.data_resolution,
+                                 # data_resolution=self.data_resolution,
                                  middle_slices=args.middle_slices,
                                  every_other=args.every_other)
 

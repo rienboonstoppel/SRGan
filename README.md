@@ -59,9 +59,14 @@ Data is not present in this repo, but should be located in the `data` folder in 
 ├── main.py
 ├── data                          # data-folder
 │   ├── brain_real_t1w_mri        # real data
-│   │   ├── GT                    # ground truth real data (1mm)
-│   │   ├── LR                    # low-res real data (2mm)
-│   │   └── MSK                   # segmentations of GT data
+│   │   ├── MRBrainS18            # Data from MRBrainS18 challenge
+│   │   │   ├── LR                # low-res (2mm)
+│   │   │   ├── GR                # high-res (ground truth) (1mm)
+│   │   │   └── MSK               # segmentations of GT data
+│   │   ├── HCP                   # data from HCP database
+│   │   │   ├── LR                # low-res (1mm)
+│   │   │   ├── HR                # high-res (0.7mm)
+│   │   │   └── MSK               # segmentations of HR data
 │   ├── brain_simulated_t1w_mri   # simulated data
 │   │   ├── 1mm_07mm              # 1mm and 0.7mm simulated data
 │   │   │   ├── HR_img            # high res simulated data (0.7mm)
