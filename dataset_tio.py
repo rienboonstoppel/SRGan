@@ -36,56 +36,55 @@ class Image(object):
         pass
 
     def to_nifty(self):
-        lr_fname, hr_fname, msk_fname = self.fnames()
-        lr = nib.load(lr_fname)
-        hr = nib.load(hr_fname)
-        msk = nib.load(msk_fname)
-        return lr, hr, msk
+        fnames = self.fnames()
+        if 'LR' not in fnames.keys():
+            raise ValueError('At least the LR is necessary for the data')
+        nifty_dict = {key: nib.load(fnames[key]) for key in fnames.keys()}
+        return nifty_dict
 
     def subject(self):
-        lr_nib, hr_nib, msk_nib = self.to_nifty()
+        nifty_dict = self.to_nifty()
+
         if self.middle_slices is None:
-            middle_slices = lr_nib.get_fdata().shape[2]
+            middle_slices = nifty_dict['LR'].get_fdata().shape[2]
         else:
             middle_slices = self.middle_slices
 
-        lr = select_slices(img=lr_nib.get_fdata(),
-                           middle_slices=middle_slices,
-                           every_other=self.every_other)
-        hr = select_slices(img=hr_nib.get_fdata(),
-                           middle_slices=middle_slices,
-                           every_other=self.every_other)
-        msk = select_slices(img=msk_nib.get_fdata(),
-                            middle_slices=middle_slices,
-                            every_other=self.every_other)
-        if ((msk==0) | (msk==1)).all():
-            pass
-        else:
-            msk[msk > 0] = 1
-            msk = cv2.erode(msk, np.ones((10, 10)), iterations=3)
+        numpy_dict = {key: select_slices(img=nifty_dict[key].get_fdata(),
+                                         middle_slices=middle_slices,
+                                         every_other=self.every_other)
+                      for key in nifty_dict.keys()}
 
-        lr_norm, self.scaling_LR = perc_norm(lr)
-        hr_norm, self.scaling_HR = perc_norm(hr)
+        numpy_dict['LR'], self.scaling_LR = perc_norm(numpy_dict['LR'])
 
-        subject = tio.Subject(
-            LR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(lr_norm, 0))),
-            HR=tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(hr_norm, 0))),
-            MSK=tio.LabelMap(tensor=torch.from_numpy(np.expand_dims(msk, 0))),
-        )
+        if 'HR' in numpy_dict.keys():
+            numpy_dict['HR'], self.scaling_HR = perc_norm(numpy_dict['HR'])
+
+        subject = tio.Subject({key: tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims((numpy_dict[key]), 0)))
+                               for key in numpy_dict.keys() if key!='MSK'})
+
+        if 'MSK' in numpy_dict.keys():
+            if ((numpy_dict['MSK']==0) | (numpy_dict['MSK']==1)).all():
+                subject.add_image(tio.LabelMap(tensor=torch.from_numpy(np.expand_dims(numpy_dict['MSK'], 0))), 'MSK')
+            else:
+                numpy_dict['MSK'][numpy_dict['MSK'] > 0] = 1
+                msk = cv2.erode(numpy_dict['MSK'], np.ones((10, 10)), iterations=3)
+                subject.add_image(tio.LabelMap(tensor=torch.from_numpy(np.expand_dims(msk, 0))), 'MSK')
         return subject
 
     def info(self):
-        lr_nib, hr_nib, msk_nib = self.to_nifty()
+        nifty_dict = self.to_nifty()
         img_info = {
             'LR': {
-                'header': lr_nib.header,
+                'header': nifty_dict['LR'].header,
                 'scaling': self.scaling_LR,
             },
-            'HR': {
-                'header': hr_nib.header,
-                'scaling': self.scaling_HR,
-            }
         }
+        if 'HR' in nifty_dict.keys():
+            img_info['HR'] = {
+                    'header': nifty_dict['HR'].header,
+                    'scaling': self.scaling_HR,
+                }
         return img_info
 
 
@@ -112,7 +111,9 @@ class SimImage(Image):
             msk_fname = path.join(self.path, 'HR_' + 'msk', self.img_fname + "_Res_0.7_0.7_1_" + 'msk' + ".nii.gz")
         else:
             raise ValueError("Resolution '{}' not recognized or available, choose '2mm_1mm' or '1mm_07mm' instead".format(self.data_resolution))
-        return lr_fname, hr_fname, msk_fname
+        return {'LR': lr_fname,
+                'HR': hr_fname,
+                'MSK': msk_fname}
 
 class MRBrainS18Image(Image):
     def __init__(self, number, root_dir='data', middle_slices=50, every_other=1):
@@ -125,7 +126,9 @@ class MRBrainS18Image(Image):
         lr_fname = path.join(self.path, 'LR', self.img_fname + ".nii.gz")
         hr_fname = path.join(self.path, 'GT', self.img_fname + ".nii.gz")
         msk_fname = path.join(self.path, 'MSK', self.msk_fname + ".nii.gz")
-        return lr_fname, hr_fname, msk_fname
+        return {'LR': lr_fname,
+                'HR': hr_fname,
+                'MSK': msk_fname}
 
 class HCPImage(Image):
     def __init__(self, number, root_dir='data', middle_slices=50, every_other=1):
@@ -138,7 +141,21 @@ class HCPImage(Image):
         lr_fname = path.join(self.path, 'LR', self.img_fname + ".nii.gz")
         hr_fname = path.join(self.path, 'HR', self.img_fname + ".nii.gz")
         msk_fname = path.join(self.path, 'MSK', self.msk_fname + ".nii.gz")
-        return lr_fname, hr_fname, msk_fname
+        return {'LR': lr_fname,
+                'HR': hr_fname,
+                'MSK': msk_fname}
+
+class OASISImage(Image):
+    def __init__(self, number, root_dir='data', middle_slices=50, every_other=1):
+        super().__init__(middle_slices, every_other)
+        self.path = os.path.join(root_dir, 'brain_real_t1w_mri', 'OASIS')
+        self.img_fname = "OAS1_{:04d}_MR1_mpr_n4_anon_111_t88_masked_gfc".format(number)
+
+    def fnames(self):
+        lr_fname = path.join(self.path, 'LR', self.img_fname + ".nii.gz")
+        msk_fname = path.join(self.path, 'MSK', self.img_fname + "_fseg.nii.gz")
+        return {'LR': lr_fname,
+                'MSK': msk_fname}
 
 def sim_data(dataset,
              data_resolution='1mm_07mm',
@@ -234,6 +251,13 @@ def HCP_data(dataset,
         data = HCPImage(num, root_dir=root_dir, middle_slices=middle_slices, every_other=every_other)
         subjects.append(data.subject())
     return subjects
+
+def mixed_data(dataset, patients_frac, middle_slices=None, root_dir='data', every_other=1):
+    sim_subjects = sim_data(dataset=dataset, patients_frac=patients_frac/4, middle_slices=middle_slices, root_dir=root_dir, every_other=every_other)
+    hcp_subjects = HCP_data(dataset=dataset, patients_frac=patients_frac/2, middle_slices=middle_slices, root_dir=root_dir, every_other=every_other)
+    mixed = sim_subjects + hcp_subjects
+    random.shuffle(mixed)
+    return mixed
 
 
 def calculate_overlap(img, patch_size, ovl_perc):

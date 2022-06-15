@@ -34,17 +34,27 @@ def print_config(config, args):
         print("{:<20}| {:<10} ".format('checkpointing', 'best and time'))
 
 
-def save_to_nifti(img, header, fname, std, max_val, source):
+def save_to_nifti(img, header, fname, max_val, source):
+    size = 0.7
     if source == 'sim':
-        affine = np.array([[-.7, 0, 0, 0],
-                           [0, -.7, 0, 0],
+        affine = np.array([[-size, 0, 0, 0],
+                           [0, -size, 0, 0],
                            [0, 0, 1, 0],
                            [0, 0, 0, 1]])
-    elif source == 'mrbrains18': #TODO fix
-        size = 0.7
+    elif source == 'mrbrains18':
         affine = np.array([[size, 0, 0, 0],
                            [0, size, 0, 0],
                            [0, 0, 3, 0],
+                           [0, 0, 0, 1]])
+    elif source =='hcp':
+        affine = np.array([[size, 0, 0, 0],
+                           [0, size, 0, 0],
+                           [0, 0, size, 0],
+                           [0, 0, 0, 1]])
+    elif source == 'oasis':
+        affine = np.array([[size, 0, 0, 0],
+                           [0, size, 0, 0],
+                           [0, 0, 1, 0],
                            [0, 0, 0, 1]])
     img = img.numpy()[0]
     img *= max_val
@@ -52,25 +62,22 @@ def save_to_nifti(img, header, fname, std, max_val, source):
     nib.save(img_nifti, fname)
 
 
-def save_subject(subject, header, pref, std, max_vals, source, path='output'):
+def save_subject(subject, header, pref, max_vals, source, path='output'):
     os.makedirs(path, exist_ok=True)
     save_to_nifti(img=subject['LR'],
                   header=header,
-                  std=std,
                   max_val=max_vals['LR'],
                   fname=os.path.join(path, '{}_LR.nii.gz'.format(pref)),
                   source=source,
                   )
     save_to_nifti(img=subject['HR'],
                   header=header,
-                  std=std,
                   max_val=max_vals['HR'],
                   fname=os.path.join(path, '{}_HR.nii.gz'.format(pref)),
                   source=source,
                   )
     save_to_nifti(img=subject['SR'],
                   header=header,
-                  std=std,
                   max_val=max_vals['SR'],
                   fname=os.path.join(path, '{}_SR.nii.gz'.format(pref)),
                   source=source,
