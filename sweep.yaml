@@ -1,5 +1,5 @@
 program: main.py
-method: random
+method: grid
 project: sweep
 metric:
   goal: maximize
@@ -9,8 +9,10 @@ parameters:
 #    values: [True, False]
 #  gan_mode:
 #    values: [vanilla, wgan]
-  generator:
-    values: [ESRGAN, RRDB, DeepUResnet, FSRCNN]
+#  generator:
+#    values: [ESRGAN, RRDB, DeepUResnet, FSRCNN]
+  data_source:
+    values: [mixed, sim, hcp]
 #  alpha_edge:
 #    distribution: uniform
 #    min: 0.01
@@ -33,6 +35,7 @@ command:
   - --gpus=1
   - --log_every_n_steps=50
   - --max_epochs=15
-  - --name=generator
+  - --name=data_source
   - --gan
   - --num_sanity_val_steps=0
+  - --wandb_project=sweep

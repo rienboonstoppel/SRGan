@@ -7,7 +7,9 @@ import torchio as tio
 import wandb
 from torchvision.utils import make_grid
 from edgeloss import edge_loss1, edge_loss2, edge_loss3
-from dataset_tio import sim_data, Normalize, calculate_overlap, HCP_data, mixed_data
+from dataset_tio import sim_data, calculate_overlap, HCP_data, mixed_data
+from transform import Normalize
+
 from lightning_losses import GANLoss, GradientPenalty
 from utils import val_metrics, imgs_cat
 
@@ -51,6 +53,7 @@ class LitTrainer(pl.LightningModule):
 
         self.netD_freq = config.netD_freq
 
+        self.data_source = config.data_source
         self.data_resolution = config.data_resolution
         self.patients_frac = config.patients_frac
         self.patch_overlap = config.patch_overlap
@@ -270,19 +273,28 @@ class LitTrainer(pl.LightningModule):
     def setup(self, stage='fit'):
         args = self.args
         data_path = os.path.join(args.root_dir, 'data')
-        train_subjects = mixed_data(dataset='training',
+
+        if self.data_source == 'sim':
+            data = sim_data
+        elif self.data_source == 'hcp':
+            data = HCP_data
+        elif self.data_source == 'mixed':
+            data = mixed_data
+        else: raise ValueError("Dataset '{}' not implemented".format(self.data_source))
+
+        train_subjects = data(dataset='training',
                                   patients_frac=self.patients_frac,
                                   root_dir=data_path,
                                   # data_resolution=self.data_resolution,
                                   middle_slices=args.middle_slices,
                                   every_other=args.every_other)
-        val_subjects = mixed_data(dataset='validation',
+        val_subjects = data(dataset='validation',
                                 patients_frac=self.patients_frac,
                                 root_dir=data_path,
                                 # data_resolution=self.data_resolution,
                                 middle_slices=args.middle_slices,
                                 every_other=args.every_other)
-        test_subjects = mixed_data(dataset='test',
+        test_subjects = data(dataset='test',
                                  patients_frac=self.patients_frac,
                                  root_dir=data_path,
                                  # data_resolution=self.data_resolution,

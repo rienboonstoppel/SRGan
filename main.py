@@ -38,6 +38,7 @@ default_config = {
     'gan_mode': 'vanilla',
     'edge_loss': 2,
     'netD_freq': 1,
+    'data_source': 'mixed',
     'data_resolution': '1mm_07mm',
     'patients_frac': 1,
     'patch_overlap': 0.5,
@@ -53,7 +54,7 @@ def main(default_config):
     parser.add_argument('--root_dir', default='/mnt/beta/djboonstoppel/Code', type=str)
     parser.add_argument('--warmup_batches', default=2500, type=int)
     parser.add_argument('--name', required=True, type=str)
-    parser.add_argument('--wandb_project', default='afstuderen', type=str)
+    parser.add_argument('--wandb_project', default='test', type=str)
     parser.add_argument('--gan', action='store_true')
     parser.add_argument('--no_checkpointing', action='store_true')
     parser.set_defaults(gan=False)
@@ -72,7 +73,7 @@ def main(default_config):
     os.makedirs(os.path.join(args.root_dir, 'log', args.name), exist_ok=True)
     wandb.init(config=default_config,
                project=args.wandb_project,
-               name=args.name,
+               # name=args.name,
                dir=os.path.join(args.root_dir, 'log', args.name))
     config = wandb.config
 
@@ -94,7 +95,7 @@ def main(default_config):
     feature_extractor = FeatureExtractor()
 
     logger = WandbLogger(project=args.wandb_project,
-                         name=args.name,
+                         # name=args.name,
                          save_dir=os.path.join(args.root_dir, 'log', args.name),
                          log_model=False, )
 

@@ -8,9 +8,9 @@ import torchio as tio
 import wandb
 from torchvision.utils import make_grid
 from edgeloss import edge_loss1, edge_loss2, edge_loss3
-from dataset_tio import sim_data, Normalize, calculate_overlap
+from dataset_tio import sim_data, calculate_overlap
 from utils import imgs_cat, val_metrics
-
+from transform import Normalize
 warnings.filterwarnings('ignore', '.*The dataloader, .*')
 
 
