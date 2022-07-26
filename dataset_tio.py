@@ -14,12 +14,57 @@ from torchio.transforms.intensity_transform import IntensityTransform
 from torchio.transforms.augmentation.random_transform import RandomTransform
 import cv2
 from skimage import exposure
+from skimage import filters
+from utils import square_mask, cuboid_mask
 from torchio.typing import TypeRangeFloat
 from collections import defaultdict
 from typing import Tuple
+from scipy import signal
 
+
+def augment_hcp(img3d):
+    ### dummy
+    # img3d_aug = img3d
+
+    ### simple augments
+    # img3d_aug = img3d + 5 * (img3d - filters.gaussian(img3d, sigma=(5,5,0), preserve_range=True))
+    # img3d_aug = img3d
+    # gamma = 1.5
+    # img3d_aug = exposure.adjust_gamma(img3d, gamma=gamma, gain=1)
+
+    ### adding in img domain
+    # size = (170, 250)
+    # mask = cuboid_mask(img3d, size)
+    # mask_gauss = filters.gaussian(mask, sigma=5)
+    #
+    # LR_fft_vol = np.fft.fftshift(np.fft.fftn(img3d))
+    # LR_fft_masked_vol = LR_fft_vol * mask_gauss
+    # LR_highpass_vol = np.abs(np.fft.ifftn(LR_fft_masked_vol))
+    # img3d_aug = img3d + LR_highpass_vol * 5
+
+    ### adding in fft domain
+    # size = (100, 200)
+    # mask = cuboid_mask(img3d, size)
+    # mask_gauss = filters.gaussian(mask, sigma=5)
+    #
+    # LR_fft_vol = np.fft.fftshift(np.fft.fftn(img3d))
+    # LR_fft_masked_vol = LR_fft_vol * mask_gauss
+    # LR_fft_sharpened = LR_fft_vol + LR_fft_masked_vol * .5
+    # img3d_aug = np.abs(np.fft.ifftn(LR_fft_sharpened))
+
+    ### adding with tukey
+    window = signal.tukey(img3d.shape[0], alpha=0.5)
+    window2d = np.repeat(window[:, np.newaxis], img3d.shape[1], axis=1)
+    mask = (1 - (np.rot90(window2d) * window2d)) * 30
+    mask3d = np.repeat(mask[:, :, np.newaxis], img3d.shape[2], axis=2)
+    fourier = np.fft.fftshift(np.fft.fftn(img3d))
+    added = fourier + mask3d * fourier
+    img3d_aug = np.abs(np.fft.ifftn(np.fft.ifftshift(added)))
+
+    return img3d_aug
 
 def perc_norm(img3d, perc=95):
+    img3d = np.clip(img3d-img3d[0,0,0], 0, None)
     max_val = np.percentile(img3d, perc)
     img_norm = img3d.astype(float) / max_val.astype(np.float32)
     return img_norm, max_val
@@ -32,10 +77,11 @@ def select_slices(img, middle_slices, every_other=1):
 
 
 class Image(object):
-    def __init__(self, middle_slices, every_other, hist_eq=False):
+    def __init__(self, middle_slices, every_other, hist_eq=False, augment=False):
         self.middle_slices = middle_slices
         self.every_other = every_other
         self.hist_eq = hist_eq
+        self.augment = augment
 
     @abstractmethod
     def fnames(self):
@@ -56,14 +102,14 @@ class Image(object):
         else:
             middle_slices = self.middle_slices
 
-        imgs_np = {key: select_slices(img=niftys[key].get_fdata()-niftys[key].get_fdata()[0,0,0],
+        imgs_np = {key: select_slices(img=niftys[key].get_fdata(),#-niftys[key].get_fdata()[0,0,0],
                                          middle_slices=middle_slices,
                                          every_other=self.every_other)
                       for key in niftys.keys()}
 
         imgs_np['LR'], self.scaling_LR = perc_norm(imgs_np['LR'])
-        # a, self.scaling_LR = perc_norm(imgs_np['LR'])
-
+        if self.augment:
+            imgs_np['LR'] = augment_hcp(imgs_np['LR'])
         # img_cdf, bin_centers = exposure.cumulative_distribution(imgs_np['LR'])
         # imgs_np['LR'] = np.interp(imgs_np['LR'], bin_centers, img_cdf)
         # imgs_np['LR'] = imgs_np['LR'] - imgs_np['LR'][0,0,0]
@@ -75,7 +121,6 @@ class Image(object):
 
         if 'HR' in imgs_np.keys():
             imgs_np['HR'], self.scaling_HR = perc_norm(imgs_np['HR'])
-            a, self.scaling_HR = perc_norm(imgs_np['HR'])
             if self.hist_eq:
                 imgs_np['HR'] = exposure.equalize_hist(imgs_np['HR'], mask=imgs_np['MSK'])
 
@@ -106,10 +151,98 @@ class Image(object):
                 }
         return img_info
 
+def create_2d_fft_mask(HR_slice: np.array, padding=60, alpha1 = 0.5, alpha2 = 0.2, padding_value=0.4) -> np.array:
+    # make LR filter
+    x = signal.tukey(HR_slice.shape[0] - 2 * padding, alpha1)  # as per image size and desired window size
+    y = signal.tukey(HR_slice.shape[0] - 2 * padding, alpha1)
+    [mask_x, mask_y] = np.meshgrid(x, y)
+
+    # create mask with correct scaling
+    mask_xy = (mask_x * mask_y) * (1 - padding_value) + padding_value
+
+    # keep high freq
+    high_freq_x = signal.tukey(HR_slice.shape[0], alpha2)
+    high_freq_y = signal.tukey(HR_slice.shape[0], alpha2)
+    [high_freqs_x, high_freqs_y] = np.meshgrid(high_freq_x, high_freq_y)
+
+    # create mask with correct scaling
+    high_freqs_xy = (1 - (high_freqs_x * high_freqs_y)) * ((1 - padding_value) / 2)
+
+    # combine masks with correct padding values
+    mask = np.pad(mask_xy, padding, constant_values=padding_value) + high_freqs_xy  # for simple zero padding
+
+    return mask
+
+# def generate_LR(HR): #TODO
+
+# class ImageGen(object):
+#     def __init__(self, middle_slices, every_other, hist_eq=False, augment=False):
+#         self.middle_slices = middle_slices
+#         self.every_other = every_other
+#         self.hist_eq = hist_eq
+#         self.augment = augment
+#
+#     @abstractmethod
+#     def fnames(self):
+#         pass
+#
+#     def to_nifty(self) -> dict:
+#         fnames = self.fnames()
+#         if 'HR' not in fnames.keys():
+#             raise ValueError('At least the HR is necessary for these data')
+#         niftys = {key: nib.load(fnames[key]) for key in fnames.keys()}
+#         return niftys
+#
+#     def subject(self) -> Subject:
+#         niftys = self.to_nifty()
+#
+#         if self.middle_slices is None:
+#             middle_slices = niftys['HR'].get_fdata().shape[2]
+#         else:
+#             middle_slices = self.middle_slices
+#
+#         imgs_np = {key: select_slices(img=niftys[key].get_fdata(),
+#                                          middle_slices=middle_slices,
+#                                          every_other=self.every_other)
+#                       for key in niftys.keys()}
+#
+#         imgs_np['HR'], self.scaling_LR = perc_norm(imgs_np['HR'])
+#
+#         if 'HR' in imgs_np.keys():
+#             imgs_np['HR'], self.scaling_HR = perc_norm(imgs_np['HR'])
+#
+#         subject = tio.Subject({key: tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims((imgs_np[key]), 0)))
+#                                for key in imgs_np.keys() if key!='MSK'})
+#
+#         if 'MSK' in imgs_np.keys():
+#             if ((imgs_np['MSK']==0) | (imgs_np['MSK']==1)).all():
+#                 subject.add_image(tio.LabelMap(tensor=torch.from_numpy(np.expand_dims(imgs_np['MSK'], 0))), 'MSK')
+#             else:
+#                 imgs_np['MSK'][imgs_np['MSK'] > 0] = 1
+#                 msk = cv2.erode(imgs_np['MSK'], np.ones((10, 10)), iterations=3)
+#                 subject.add_image(tio.LabelMap(tensor=torch.from_numpy(np.expand_dims(msk, 0))), 'MSK')
+#         return subject
+#
+#     def info(self) -> dict:
+#         niftys = self.to_nifty()
+#         img_info = {
+#             'LR': {
+#                 'header': niftys['LR'].header,
+#                 'scaling': self.scaling_LR,
+#             },
+#         }
+#         if 'HR' in niftys.keys():
+#             img_info['HR'] = {
+#                     'header': niftys['HR'].header,
+#                     'scaling': self.scaling_HR,
+#                 }
+#         return img_info
+
+
 
 class SimImage(Image):
-    def __init__(self, number, root_dir='data', middle_slices=50, every_other=1, data_resolution='2mm_1mm', hist_eq=False):
-        super().__init__(middle_slices, every_other, hist_eq)
+    def __init__(self, number, root_dir='data', middle_slices=50, every_other=1, data_resolution='2mm_1mm', hist_eq=False, augment=False):
+        super().__init__(middle_slices, every_other, hist_eq, augment)
         self.data_resolution = data_resolution
         self.path = os.path.join(root_dir, "brain_simulated_t1w_mri", data_resolution)
         if data_resolution == '2mm_1mm':
@@ -150,8 +283,8 @@ class MRBrainS18Image(Image):
                 'MSK': msk_fname}
 
 class HCPImage(Image):
-    def __init__(self, number, root_dir='data', middle_slices=50, every_other=1, hist_eq=False):
-        super().__init__(middle_slices, every_other, hist_eq)
+    def __init__(self, number, root_dir='data', middle_slices=50, every_other=1, hist_eq=False, augment=False):
+        super().__init__(middle_slices, every_other, hist_eq, augment)
         self.path = os.path.join(root_dir, 'brain_real_t1w_mri', 'HCP')
         self.img_fname = "{:01d}_3T_T1w_MPR1_img".format(number)
         self.msk_fname = "labels_{:01d}_3T_T1w_MPR1_img".format(number)

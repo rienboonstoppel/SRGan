@@ -38,9 +38,9 @@ default_config = {
     'gan_mode': 'vanilla',
     'edge_loss': 2,
     'netD_freq': 1,
-    'data_source': 'mixed',
+    'data_source': 'sim',
     'data_resolution': '1mm_07mm',
-    'patients_frac': 1,
+    'patients_frac': 0.5,
     'patch_overlap': 0.5,
     'generator': 'ESRGAN'
 }
@@ -73,7 +73,8 @@ def main(default_config):
     os.makedirs(os.path.join(args.root_dir, 'log', args.name), exist_ok=True)
     wandb.init(config=default_config,
                project=args.wandb_project,
-               # name=args.name,
+               name=args.name,
+               group="DDP",
                dir=os.path.join(args.root_dir, 'log', args.name))
     config = wandb.config
 
@@ -95,7 +96,7 @@ def main(default_config):
     feature_extractor = FeatureExtractor()
 
     logger = WandbLogger(project=args.wandb_project,
-                         # name=args.name,
+                         name=args.name,
                          save_dir=os.path.join(args.root_dir, 'log', args.name),
                          log_model=False, )
 
@@ -111,7 +112,7 @@ def main(default_config):
     checkpoint_callback_best = ModelCheckpoint(
         monitor="SSIM_mean",
         dirpath=os.path.join(args.root_dir, 'log', args.name),
-        filename=args.name + config.generator + "-checkpoint-best",
+        filename=args.name + "-checkpoint-best",
         save_top_k=1,
         mode="max",
     )

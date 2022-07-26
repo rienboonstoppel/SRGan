@@ -8,7 +8,7 @@ import wandb
 from torchvision.utils import make_grid
 from edgeloss import edge_loss1, edge_loss2, edge_loss3
 from dataset_tio import sim_data, calculate_overlap, HCP_data, mixed_data
-from transform import Normalize
+from transform import Normalize, RandomGamma, RandomIntensity, RandomBiasField, RandomBlur
 
 from lightning_losses import GANLoss, GradientPenalty
 from utils import val_metrics, imgs_cat
@@ -95,7 +95,7 @@ class LitTrainer(pl.LightningModule):
         if self.log_images_train:
             if train_batches_done % (self.args.log_every_n_steps * 5) == 0:
                 grid = imgs_cat(imgs_lr * self.args.std, imgs_hr * self.args.std, imgs_sr * self.args.std)
-                self.logger.log_image('images train', [wandb.Image(make_grid(torch.clamp(grid, 0, 1), nrow=10))])
+                self.logger.log_image('images train', [wandb.Image(make_grid(torch.clamp(grid, 0, 1.5), nrow=10))])
 
         # ---------------------
         #  Train Generator
@@ -108,15 +108,16 @@ class LitTrainer(pl.LightningModule):
                 g_loss = loss_pixel
                 return g_loss
 
-            loss_pixel = self.criterion_pixel(imgs_sr, imgs_hr) if self.alpha_pixel!=0 else 0
+            loss_pixel = self.criterion_pixel(imgs_sr, imgs_hr) if self.alpha_pixel != 0 else 0
 
-            loss_edge = self.criterion_edge(imgs_sr, imgs_hr) if self.alpha_edge!=0 else 0
+            loss_edge = self.criterion_edge(imgs_sr, imgs_hr) if self.alpha_edge != 0 else 0
 
-            if self.alpha_perceptual!=0:
+            if self.alpha_perceptual != 0:
                 gen_features = self.netF(torch.repeat_interleave(imgs_sr, 3, 1))
                 real_features = self.netF(torch.repeat_interleave(imgs_hr, 3, 1)).detach()
                 loss_perceptual = self.criterion_perceptual(gen_features, real_features)
-            else: loss_perceptual = 0
+            else:
+                loss_perceptual = 0
 
             # Extract validity predictions from discriminator
             pred_real = self.netD(imgs_hr).detach()
@@ -179,14 +180,15 @@ class LitTrainer(pl.LightningModule):
             imgs_lr, imgs_hr = self.prepare_batch(batch)
             imgs_sr = self(imgs_lr)
 
-            loss_pixel = self.criterion_pixel(imgs_sr, imgs_hr) if self.alpha_pixel!=0 else 0
-            loss_edge = self.criterion_edge(imgs_sr, imgs_hr) if self.alpha_edge!=0 else 0
+            loss_pixel = self.criterion_pixel(imgs_sr, imgs_hr) if self.alpha_pixel != 0 else 0
+            loss_edge = self.criterion_edge(imgs_sr, imgs_hr) if self.alpha_edge != 0 else 0
 
-            if self.alpha_perceptual!=0:
+            if self.alpha_perceptual != 0:
                 gen_features = self.netF(imgs_sr.repeat(1, 3, 1, 1))
                 real_features = self.netF(imgs_hr.repeat(1, 3, 1, 1))
                 loss_perceptual = self.criterion_perceptual(gen_features, real_features)
-            else: loss_perceptual = 0
+            else:
+                loss_perceptual = 0
 
             # Extract validity predictions from discriminator
             pred_real = self.netD(imgs_hr)
@@ -224,7 +226,8 @@ class LitTrainer(pl.LightningModule):
                 val_batches_done = batch_idx + self.current_epoch * self.val_len
                 if val_batches_done % self.args.log_every_n_steps == 0:
                     grid = imgs_cat(imgs_lr * self.args.std, imgs_hr * self.args.std, imgs_sr * self.args.std)
-                    self.logger.log_image('images validation', [wandb.Image(make_grid(torch.clamp(grid, 0, 1), nrow=10))])
+                    self.logger.log_image('images validation',
+                                          [wandb.Image(make_grid(torch.clamp(grid, 0, 1.5), nrow=10))])
 
             return g_loss
 
@@ -268,7 +271,7 @@ class LitTrainer(pl.LightningModule):
 
         middle = int(SR_aggs[0].shape[3] / 2)
         grid = torch.stack([SR_aggs[i][:, :, :, middle].squeeze() for i in range(len(SR_aggs))], dim=0).unsqueeze(1)
-        self.logger.log_image('aggregated validation', [wandb.Image(make_grid(torch.clamp(grid, 0, 1), nrow=5))])
+        self.logger.log_image('aggregated validation', [wandb.Image(make_grid(torch.clamp(grid, 0, 1.5), nrow=5))])
 
     def setup(self, stage='fit'):
         args = self.args
@@ -280,26 +283,27 @@ class LitTrainer(pl.LightningModule):
             data = HCP_data
         elif self.data_source == 'mixed':
             data = mixed_data
-        else: raise ValueError("Dataset '{}' not implemented".format(self.data_source))
+        else:
+            raise ValueError("Dataset '{}' not implemented".format(self.data_source))
 
         train_subjects = data(dataset='training',
-                                  patients_frac=self.patients_frac,
-                                  root_dir=data_path,
-                                  # data_resolution=self.data_resolution,
-                                  middle_slices=args.middle_slices,
-                                  every_other=args.every_other)
+                              patients_frac=self.patients_frac,
+                              root_dir=data_path,
+                              # data_resolution=self.data_resolution,
+                              middle_slices=args.middle_slices,
+                              every_other=args.every_other)
         val_subjects = data(dataset='validation',
-                                patients_frac=self.patients_frac,
-                                root_dir=data_path,
-                                # data_resolution=self.data_resolution,
-                                middle_slices=args.middle_slices,
-                                every_other=args.every_other)
+                            patients_frac=self.patients_frac,
+                            root_dir=data_path,
+                            # data_resolution=self.data_resolution,
+                            middle_slices=args.middle_slices,
+                            every_other=args.every_other)
         test_subjects = data(dataset='test',
-                                 patients_frac=self.patients_frac,
-                                 root_dir=data_path,
-                                 # data_resolution=self.data_resolution,
-                                 middle_slices=args.middle_slices,
-                                 every_other=args.every_other)
+                             patients_frac=self.patients_frac,
+                             root_dir=data_path,
+                             # data_resolution=self.data_resolution,
+                             middle_slices=args.middle_slices,
+                             every_other=args.every_other)
 
         # train_subjects = mixed_data(dataset='training', combined_num_patients=self.num_patients, num_real=self.num_real, root_dir=data_path)
         # val_subjects = mixed_data(dataset='validation', combined_num_patients=self.num_patients, num_real=self.num_real, root_dir=data_path)
@@ -319,13 +323,28 @@ class LitTrainer(pl.LightningModule):
             self.post_proc_info.append((bg_idx, crop_coords))
 
         training_transform = tio.Compose([
-            Normalize(std=args.std),
+            RandomBiasField(coefficients=0.2, p=0.5),
+            RandomGamma(p=0.5),
+            RandomIntensity(intensity_diff=(-0.3, 0.2), p=0.5),
+            RandomBlur(std=(0,1), p=0.75),
+            Normalize(std=args.std, p=1),
             # tio.RandomNoise(p=0.5),
             tio.RandomFlip(axes=(0, 1), flip_probability=0.5),
             tio.RandomFlip(axes=(0, 1), flip_probability=0.75),
         ])
 
-        test_transform = tio.Compose([Normalize(std=args.std), ])
+        test_transform = tio.Compose([
+            RandomBiasField(coefficients=0.3),
+            RandomGamma(),
+            RandomIntensity(),
+            RandomBlur(std=1, p=0.75),
+            Normalize(std=args.std),
+            # tio.RandomNoise(p=0.5),
+            # tio.RandomFlip(axes=(0, 1), flip_probability=0.5),
+            # tio.RandomFlip(axes=(0, 1), flip_probability=0.75),
+        ])
+
+        # test_transform = tio.Compose([Normalize(std=args.std), ])
 
         self.training_set = tio.SubjectsDataset(
             train_subjects, transform=training_transform)

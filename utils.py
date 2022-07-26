@@ -237,3 +237,36 @@ def get_mean_and_std(dataloader):
     std = (channels_squared_sum / num_batches - mean ** 2) ** 0.5
 
     return mean, std
+
+
+def square_mask(slice, size):
+    mask = np.zeros_like(slice)
+    if isinstance(size, int):
+        mask[int(slice.shape[0]/2-size/2):int(slice.shape[0]/2+size/2),
+             int(slice.shape[0]/2-size/2):int(slice.shape[0]/2+size/2)] = 1
+    if isinstance(size, tuple):
+        if size[1]<=size[0]:
+            return 'outer size must be larger dan inner size'
+        mask[int(slice.shape[0]/2-size[1]/2):int(slice.shape[0]/2+size[1]/2),
+             int(slice.shape[0]/2-size[1]/2):int(slice.shape[0]/2+size[1]/2)] = 1
+        mask[int(slice.shape[0]/2-size[0]/2):int(slice.shape[0]/2+size[0]/2),
+             int(slice.shape[0]/2-size[0]/2):int(slice.shape[0]/2+size[0]/2)] = 0
+    return mask
+
+
+def cuboid_mask(img3d, size):
+    if type(img3d) == np.ndarray:
+        mask = np.zeros_like(img3d)
+    else:
+        mask = torch.zeros_like(img3d)
+    if isinstance(size, int):
+        mask[int(img3d.shape[0]/2-size/2):int(img3d.shape[0]/2+size/2),
+             int(img3d.shape[0]/2-size/2):int(img3d.shape[0]/2+size/2), :] = 1
+    if isinstance(size, tuple):
+        if size[1]<=size[0]:
+            return 'outer size must be larger dan inner size'
+        mask[int(img3d.shape[0]/2-size[1]/2):int(img3d.shape[0]/2+size[1]/2),
+             int(img3d.shape[0]/2-size[1]/2):int(img3d.shape[0]/2+size[1]/2), :] = 1
+        mask[int(img3d.shape[0]/2-size[0]/2):int(img3d.shape[0]/2+size[0]/2),
+             int(img3d.shape[0]/2-size[0]/2):int(img3d.shape[0]/2+size[0]/2), :] = 0
+    return mask
