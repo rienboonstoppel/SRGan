@@ -11,12 +11,15 @@ import pytorch_lightning as pl
 from argparse import ArgumentParser
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelPruning
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from datetime import timedelta
 from utils import print_config
 from pytorch_lightning.loggers import WandbLogger
 import wandb
 import warnings
+
+
 
 warnings.filterwarnings('ignore', '.*wandb run already in progress.*')
 
@@ -38,9 +41,10 @@ default_config = {
     'gan_mode': 'vanilla',
     'edge_loss': 2,
     'netD_freq': 1,
-    'data_source': 'sim',
+    'data_source': 'mixed',
     'data_resolution': '1mm_07mm',
-    'patients_frac': 0.5,
+    'patients_dist': (15,15),
+    'patients_frac': None,
     'patch_overlap': 0.5,
     'generator': 'ESRGAN'
 }
@@ -74,7 +78,7 @@ def main(default_config):
     wandb.init(config=default_config,
                project=args.wandb_project,
                name=args.name,
-               group="DDP",
+               # group="DDP",
                dir=os.path.join(args.root_dir, 'log', args.name))
     config = wandb.config
 
@@ -126,9 +130,9 @@ def main(default_config):
     )
 
     if args.no_checkpointing:
-        callbacks = [lr_monitor, early_stop_callback, checkpoint_callback_best]
+        callbacks = [lr_monitor, early_stop_callback, checkpoint_callback_best, ModelPruning("l1_unstructured", amount=0.5)]
     else:
-        callbacks = [lr_monitor, early_stop_callback, checkpoint_callback_best, checkpoint_callback_time]
+        callbacks = [lr_monitor, early_stop_callback, checkpoint_callback_best, checkpoint_callback_time, ModelPruning("l1_unstructured", amount=0.5)]
 
     if args.gan:
         model = LitTrainer_gan(netG=generator, netF=feature_extractor, netD=discriminator, args=args, config=config)

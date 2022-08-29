@@ -18,7 +18,8 @@ def print_config(config, args):
     print("{:<20}| {:<10}".format('Var', 'Value'))
     print('-' * 22)
     for key in config:
-        print("{:<20}| {:<10} ".format(key, config[key]))
+        if key != 'patients_dist' and key != 'patients_frac':
+            print("{:<20}| {:<10} ".format(key, config[key]))
 
     for arg in print_args:
         print("{:<20}| {:<10} ".format(arg, getattr(args, arg)))
@@ -46,7 +47,7 @@ def save_to_nifti(img, header, fname, max_val, source):
                            [0, size, 0, 0],
                            [0, 0, 3, 0],
                            [0, 0, 0, 1]])
-    elif source =='hcp':
+    elif source == 'hcp' or source == 'hcp_gen':
         affine = np.array([[size, 0, 0, 0],
                            [0, size, 0, 0],
                            [0, 0, size, 0],
@@ -70,18 +71,20 @@ def save_subject(subject, header, pref, max_vals, source, path='output'):
                   fname=os.path.join(path, '{}_LR.nii.gz'.format(pref)),
                   source=source,
                   )
-    save_to_nifti(img=subject['HR'],
-                  header=header,
-                  max_val=max_vals['HR'],
-                  fname=os.path.join(path, '{}_HR.nii.gz'.format(pref)),
-                  source=source,
-                  )
+
     save_to_nifti(img=subject['SR'],
                   header=header,
                   max_val=max_vals['SR'],
                   fname=os.path.join(path, '{}_SR.nii.gz'.format(pref)),
                   source=source,
                   )
+    if source == 'sim' or source == 'hcp' or source == 'mrbrains18':
+        save_to_nifti(img=subject['HR'],
+                      header=header,
+                      max_val=max_vals['HR'],
+                      fname=os.path.join(path, '{}_HR.nii.gz'.format(pref)),
+                      source=source,
+                      )
 
 
 def save_subject_real(subject, header, pref, std, max_vals, source, path='output'):
