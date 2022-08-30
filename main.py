@@ -41,10 +41,9 @@ default_config = {
     'gan_mode': 'vanilla',
     'edge_loss': 2,
     'netD_freq': 1,
-    'data_source': 'mixed',
+    'data_source': 'hcp',
     'data_resolution': '1mm_07mm',
-    'patients_dist': (15,15),
-    'patients_frac': None,
+    'patients_frac': 0.9,
     'patch_overlap': 0.5,
     'generator': 'ESRGAN'
 }
@@ -78,7 +77,7 @@ def main(default_config):
     wandb.init(config=default_config,
                project=args.wandb_project,
                name=args.name,
-               # group="DDP",
+               group="DDP",
                dir=os.path.join(args.root_dir, 'log', args.name))
     config = wandb.config
 
