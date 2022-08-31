@@ -41,7 +41,7 @@ def augment_hcp(img3d):
 
     ### simple augments
     # unsharp masking
-    # img3d_aug = img3d + .5 * (img3d - filters.gaussian(img3d, sigma=(1,1,0), preserve_range=True))
+    # img3d_aug = img3d + 5 * (img3d - filters.gaussian(img3d, sigma=(5,5,0), preserve_range=True))
 
     # gamma = 1.5
     # img3d_aug = exposure.adjust_gamma(img3d, gamma=gamma, gain=1)
@@ -152,11 +152,11 @@ class MRBrainS18Image(Image):
         self.msk_fname = "p{:01d}_segm".format(number)
 
     def fnames(self) -> dict:
-        # lr_fname = path.join(self.path, 'LR', self.img_fname + ".nii.gz")
-        lr_fname = path.join(self.path, 'GT', self.img_fname + ".nii.gz")
+        lr_fname = path.join(self.path, 'LR', self.img_fname + ".nii.gz")
+        hr_fname = path.join(self.path, 'GT', self.img_fname + ".nii.gz")
         msk_fname = path.join(self.path, 'MSK', self.msk_fname + ".nii.gz")
         return {'LR': lr_fname,
-                # 'HR': hr_fname,
+                'HR': hr_fname,
                 'MSK': msk_fname}
 
 
@@ -177,7 +177,7 @@ class HCPImage(Image):
 
 
 class OASISImage(Image):
-    def __init__(self, number, root_dir='data', middle_slices=50, every_other=1, augment=False):
+    def __init__(self, number, root_dir='data', middle_slices=50, every_other=1, augment=True):
         super().__init__(middle_slices, every_other, augment)
         self.path = os.path.join(root_dir, 'brain_real_t1w_mri', 'OASIS')
         self.img_fname = "OAS1_{:04d}_MR1_mpr_n4_anon_111_t88_masked_gfc".format(number)
@@ -190,14 +190,15 @@ class OASISImage(Image):
 
 
 def sim_data(dataset,
-             data_resolution = '1mm_07mm',
-             patients_dist = None,
-             patients_frac = None,
-             train_frac = 0.7,
-             middle_slices = 50,
-             every_other = 2,
-             root_dir = 'data',
-             randomseed = 21011998):
+             data_resolution='1mm_07mm',
+             patients_frac=1,
+             train_frac=0.7,
+             val_frac=.15,
+             test_frac=.15,
+             middle_slices=50,
+             every_other=1,
+             root_dir='data',
+             randomseed=21011998):
     # define paths
     random.seed(randomseed)
     if data_resolution == '2mm_1mm':
@@ -208,29 +209,19 @@ def sim_data(dataset,
         path = os.path.join(root_dir, "brain_simulated_t1w_mri", data_resolution, 'HR_img/')
         fnames = glob(path + "*.nii.gz")
         ids = sorted(list(map(int, [(fnames[i][-64:-58]) for i in range(len(fnames))])))
-    random.shuffle(ids)
+    # random.shuffle(ids)
 
-    if patients_dist is None and patients_frac is None:
-        raise ValueError("One of the following parameters should be specified: 'patients_dist' OR 'patients_frac'")
-
-    if patients_dist:
-        if len(patients_dist) == 3:
-            split1 = patients_dist[0]
-            split2 = -patients_dist[2]-patients_dist[1]
-            split3 = -patients_dist[2]
-        else:
-            raise ValueError("'patients_dist' should be a tuple with length 3")
-    else:
-        split1 = int(np.floor(patients_frac*train_frac*len(ids)))
-        split3 = -int(np.floor(patients_frac*((1-train_frac)/2)*len(ids)))
-        split2 = split3-int(np.floor(patients_frac*((1-train_frac)/2)*len(ids)))
+    # define data splits
+    split1 = int(np.floor(patients_frac * train_frac * len(ids)))
+    split2 = split1 + int(np.floor(patients_frac * val_frac * len(ids)))
+    split3 = split2 + int(np.floor(patients_frac * test_frac * len(ids)))
 
     if dataset == 'training':
         ids_split = ids[:split1]
     elif dataset == 'validation':
-        ids_split = ids[split2:split3]
+        ids_split = ids[split1:split2]
     elif dataset == 'test':
-        ids_split = ids[split3:]
+        ids_split = ids[split2:split3]
     else:
         raise ValueError("Dataset '{}' not recognized, use 'training, 'validation' or 'test' instead".format(dataset))
 
@@ -260,38 +251,29 @@ def MRBrainS18_data(root_dir='data', middle_slices=50, every_other=1):
 
 
 def HCP_data(dataset,
-             root_dir = 'data',
-             middle_slices = 50,
-             every_other = 2,
-             patients_dist = None,
-             patients_frac = None,
-             train_frac = 0.7,
+             root_dir='data',
+             middle_slices=50,
+             every_other=1,
+             patients_frac=1,
+             train_frac=0.7,
+             val_frac=.15,
+             test_frac=.15,
              ):
     path = root_dir + "/brain_real_t1w_mri/HCP/HR/"
     fnames = glob(path + "*.nii.gz")
     ids = sorted(list(map(int, [(fnames[i][-29:-23]) for i in range(len(fnames))])))
 
-    if patients_dist is None and patients_frac is None:
-        raise ValueError("One of the following parameters should be specified: 'patients_dist' OR 'patients_frac'")
-
-    if patients_dist:
-        if len(patients_dist) == 3:
-            split1 = patients_dist[0]
-            split2 = -patients_dist[2]-patients_dist[1]
-            split3 = -patients_dist[2]
-        else:
-            raise ValueError("'patients_dist' should be a tuple with length 3")
-    else:
-        split1 = int(np.floor(patients_frac*train_frac*len(ids)))
-        split3 = -int(np.floor(patients_frac*((1-train_frac)/2)*len(ids)))
-        split2 = split3-int(np.floor(patients_frac*((1-train_frac)/2)*len(ids)))
+    # define data splits
+    split1 = int(np.floor(patients_frac * train_frac * len(ids)))
+    split2 = split1 + int(np.floor(patients_frac * val_frac * len(ids)))
+    split3 = split2 + int(np.floor(patients_frac * test_frac * len(ids)))
 
     if dataset == 'training':
         ids_split = ids[:split1]
     elif dataset == 'validation':
-        ids_split = ids[split2:split3]
+        ids_split = ids[split1:split2]
     elif dataset == 'test':
-        ids_split = ids[split3:]
+        ids_split = ids[split2:split3]
     else:
         raise ValueError("Dataset '{}' not recognized, use 'training, 'validation' or 'test' instead".format(dataset))
 
@@ -305,23 +287,14 @@ def HCP_data(dataset,
     return subjects
 
 
-def mixed_data(dataset, patients_dist, patients_frac, middle_slices=None, root_dir='data', every_other=2):
-    if len(patients_dist) != 2:
-        raise ValueError("'patients_dist' should be a tuple of length 2, first element being amount of hcp training data, second one simulated training data")
-    subjects = []
-    if patients_dist[0] != 0:
-        hcp_subjects = HCP_data(dataset=dataset, patients_dist=(patients_dist[0], 10, 10), middle_slices=middle_slices,
-                                root_dir=root_dir, every_other=every_other)
-        subjects.extend(hcp_subjects)
-        print('HCP {} dataset with length {}'.format(dataset,len(hcp_subjects)))
-    if patients_dist[1] != 0:
-        sim_subjects = sim_data(dataset=dataset, patients_dist=(patients_dist[1], 10, 10), middle_slices=middle_slices,
-                                root_dir=root_dir, every_other=every_other)
-        subjects.extend(sim_subjects)
-        print('Sim {} dataset with length {}'.format(dataset,len(sim_subjects)))
-
-    random.shuffle(subjects)
-    return subjects
+def mixed_data(dataset, patients_frac, middle_slices=None, root_dir='data', every_other=1):
+    sim_subjects = sim_data(dataset=dataset, patients_frac=patients_frac / 4, middle_slices=middle_slices,
+                            root_dir=root_dir, every_other=every_other)
+    hcp_subjects = HCP_data(dataset=dataset, patients_frac=patients_frac / 2, middle_slices=middle_slices,
+                            root_dir=root_dir, every_other=every_other)
+    mixed = sim_subjects + hcp_subjects
+    random.shuffle(mixed)
+    return mixed
 
 
 def calculate_overlap(img, patch_size, ovl_perc):

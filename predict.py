@@ -44,9 +44,9 @@ default_config = {
     'patch_overlap': 0.5,
     'generator': 'ESRGAN'
 }
-
-exp_name = 'mixed-30-30_everyother'
-epoch = 2
+#test
+exp_name = 'transforms-mixed-2'
+epoch = 20
 ckpt_fname = '{}-checkpoint-epoch={}.ckpt'.format(exp_name, epoch)
 ckpt_path = os.path.join('log', exp_name, ckpt_fname)
 
@@ -75,7 +75,7 @@ def main(config, ckpt_path):
         parser = LitTrainer_org.add_model_specific_args(parser)
         args = parser.parse_args()
 
-    config['patients_dist'] = (30,10,10)
+    # config['patients_dist'] = (30,10,10)
     att_config = AttrDict(config)
 
     if att_config.generator == 'ESRGAN':
@@ -195,7 +195,7 @@ def main(config, ckpt_path):
         max_vals['HR'] = img.info()['HR']['scaling']
 
     # output_path = 'output/' + os.path.split(os.path.split(ckpt_path)[0])[1]
-    output_path = 'output/experiments'
+    output_path = 'output/control'
 
     save_subject(subject=subject,
                  header=header,
