@@ -7,7 +7,7 @@ import torchio as tio
 import wandb
 from torchvision.utils import make_grid
 from edgeloss import edge_loss1, edge_loss2, edge_loss3
-from dataset_tio import sim_data, calculate_overlap, HCP_data, mixed_data
+from dataset_tio import sim_data, calculate_overlap, HCP_data, data
 from transform import Normalize, RandomGamma, RandomIntensity, RandomBiasField, RandomBlur
 
 from lightning_losses import GANLoss, GradientPenalty
@@ -22,7 +22,7 @@ class LitTrainer(pl.LightningModule):
         parser = parent_parser.add_argument_group("LitModel")
         parser.add_argument('--std', type=float, default=0.3548)
         parser.add_argument('--middle_slices', type=int, default=100)
-        parser.add_argument('--every_other', type=int, default=2)
+        parser.add_argument('--every_other', type=int, default=1)
         parser.add_argument('--sampler', type=str, default='label', choices=['grid', 'label'])
 
         return parent_parser
@@ -53,15 +53,15 @@ class LitTrainer(pl.LightningModule):
 
         self.netD_freq = config.netD_freq
 
-        self.data_source = config.data_source
         self.data_resolution = config.data_resolution
-        self.patients_frac = config.patients_frac
+        self.nr_sim_train = config.nr_sim_train
+        self.nr_hcp_train = config.nr_hcp_train
         self.patch_overlap = config.patch_overlap
         self.batch_size = config.batch_size
         self.patch_size = config.patch_size
         self.ragan = config.ragan
         self.log_images_train = False
-        self.log_images_val = True
+        self.log_images_val = False
 
         if config.optimizer == 'sgd':
             self.optimizer_G = torch.optim.SGD(netG.parameters(),
@@ -261,6 +261,8 @@ class LitTrainer(pl.LightningModule):
                          'Q3': metrics['NCC']['quartiles'][2],
                          },
                  on_epoch=True, sync_dist=True, prog_bar=False, batch_size=self.batch_size)
+        self.log('NCC_mean', metrics['NCC']['mean'], sync_dist=True, prog_bar=True)
+
 
         self.log('NRMSE', {'Mean': metrics['NRMSE']['mean'],
                            'Q1': metrics['NRMSE']['quartiles'][0],
@@ -277,43 +279,21 @@ class LitTrainer(pl.LightningModule):
         args = self.args
         data_path = os.path.join(args.root_dir, 'data')
 
-        if self.data_source == 'sim':
-            data = sim_data
-        elif self.data_source == 'hcp':
-            data = HCP_data
-        elif self.data_source == 'mixed':
-            data = mixed_data
-        else:
-            raise ValueError("Dataset '{}' not implemented".format(self.data_source))
-
         train_subjects = data(dataset='training',
-                              patients_frac=self.patients_frac,
                               root_dir=data_path,
-                              # data_resolution=self.data_resolution,
+                              nr_sim=self.nr_sim_train,
+                              nr_hcp=self.nr_hcp_train,
                               middle_slices=args.middle_slices,
                               every_other=args.every_other)
         val_subjects = data(dataset='validation',
-                            patients_frac=self.patients_frac,
                             root_dir=data_path,
-                            # data_resolution=self.data_resolution,
                             middle_slices=args.middle_slices,
                             every_other=args.every_other)
-        test_subjects = data(dataset='test',
-                             patients_frac=self.patients_frac,
-                             root_dir=data_path,
-                             # data_resolution=self.data_resolution,
-                             middle_slices=args.middle_slices,
-                             every_other=args.every_other)
 
-        # train_subjects = mixed_data(dataset='training', combined_num_patients=self.num_patients, num_real=self.num_real, root_dir=data_path)
-        # val_subjects = mixed_data(dataset='validation', combined_num_patients=self.num_patients, num_real=self.num_real, root_dir=data_path)
-        # test_subjects = mixed_data(dataset='test', combined_num_patients=self.num_patients, num_real=self.num_real,
-        #                            numslices=45, root_dir=data_path)
-
-        self.num_test_subjects = len(test_subjects)
+        self.num_val_subjects = len(val_subjects)
 
         self.post_proc_info = []
-        for subject in test_subjects:
+        for subject in val_subjects:
             mask = subject['MSK'].data
 
             bg_idx = np.where(mask == 0)
@@ -326,18 +306,18 @@ class LitTrainer(pl.LightningModule):
             RandomBiasField(coefficients=0.2, p=0.5),
             RandomGamma(p=0.5),
             RandomIntensity(intensity_diff=(-0.3, 0.2), p=0.5),
-            RandomBlur(std=(0,1), p=0.75),
+            # RandomBlur(std=(0,1), p=0.75),
             Normalize(std=args.std, p=1),
             # tio.RandomNoise(p=0.5),
             tio.RandomFlip(axes=(0, 1), flip_probability=0.5),
             tio.RandomFlip(axes=(0, 1), flip_probability=0.75),
         ])
 
-        test_transform = tio.Compose([
+        val_agg_transform = tio.Compose([
             RandomBiasField(coefficients=0.3),
             RandomGamma(),
             RandomIntensity(),
-            RandomBlur(std=1, p=0.75),
+            # RandomBlur(std=1, p=0.75),
             Normalize(std=args.std),
             # tio.RandomNoise(p=0.5),
             # tio.RandomFlip(axes=(0, 1), flip_probability=0.5),
@@ -352,8 +332,8 @@ class LitTrainer(pl.LightningModule):
         self.val_set = tio.SubjectsDataset(
             val_subjects, transform=training_transform)
 
-        self.test_set = tio.SubjectsDataset(
-            test_subjects, transform=test_transform)
+        self.val_set_agg = tio.SubjectsDataset(
+            val_subjects, transform=val_agg_transform)
 
         self.overlap, self.samples_per_volume = calculate_overlap(train_subjects[0]['LR'],
                                                                   (self.patch_size, self.patch_size),
@@ -408,21 +388,21 @@ class LitTrainer(pl.LightningModule):
         self.val_len = len(val_loader)
 
         loaders = []
-        for i in range(self.num_test_subjects):
+        for i in range(10): #range(self.num_val_subjects):
             grid_sampler = tio.inference.GridSampler(
-                subject=self.test_set[i],
+                subject=self.val_set_agg[i],
                 patch_size=(self.patch_size, self.patch_size, 1),
                 patch_overlap=self.overlap,
                 padding_mode=0,
             )
-            test_loader = torch.utils.data.DataLoader(
+            val_agg_loader = torch.utils.data.DataLoader(
                 grid_sampler, batch_size=self.batch_size)
-            loaders.append(test_loader)
+            loaders.append(val_agg_loader)
 
         self.aggregator_HR = tio.inference.GridAggregator(grid_sampler)
         self.aggregator_SR = tio.inference.GridAggregator(grid_sampler)
 
-        self.test_len = len(self.test_set)
+        self.val_agg_len = len(self.val_set_agg)
 
         return [val_loader, *loaders]
 

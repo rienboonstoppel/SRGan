@@ -41,7 +41,7 @@ def augment_hcp(img3d):
 
     ### simple augments
     # unsharp masking
-    # img3d_aug = img3d + 5 * (img3d - filters.gaussian(img3d, sigma=(5,5,0), preserve_range=True))
+    # img3d_aug = img3d + .5 * (img3d - filters.gaussian(img3d, sigma=(1,1,0), preserve_range=True))
 
     # gamma = 1.5
     # img3d_aug = exposure.adjust_gamma(img3d, gamma=gamma, gain=1)
@@ -72,7 +72,6 @@ class Image(object):
             middle_slices = niftys['LR'].get_fdata().shape[2]
         else:
             middle_slices = self.middle_slices
-
         imgs_np = {key: select_slices(img=niftys[key].get_fdata(),
                                       middle_slices=middle_slices,
                                       every_other=self.every_other)
@@ -152,13 +151,12 @@ class MRBrainS18Image(Image):
         self.msk_fname = "p{:01d}_segm".format(number)
 
     def fnames(self) -> dict:
-        lr_fname = path.join(self.path, 'LR', self.img_fname + ".nii.gz")
-        hr_fname = path.join(self.path, 'GT', self.img_fname + ".nii.gz")
+        # lr_fname = path.join(self.path, 'LR', self.img_fname + ".nii.gz")
+        lr_fname = path.join(self.path, 'GT', self.img_fname + ".nii.gz")
         msk_fname = path.join(self.path, 'MSK', self.msk_fname + ".nii.gz")
         return {'LR': lr_fname,
-                'HR': hr_fname,
+                # 'HR': hr_fname,
                 'MSK': msk_fname}
-
 
 class HCPImage(Image):
     def __init__(self, number, root_dir='data', middle_slices=50, every_other=1, augment=False):
@@ -177,7 +175,7 @@ class HCPImage(Image):
 
 
 class OASISImage(Image):
-    def __init__(self, number, root_dir='data', middle_slices=50, every_other=1, augment=True):
+    def __init__(self, number, root_dir='data', middle_slices=50, every_other=1, augment=False):
         super().__init__(middle_slices, every_other, augment)
         self.path = os.path.join(root_dir, 'brain_real_t1w_mri', 'OASIS')
         self.img_fname = "OAS1_{:04d}_MR1_mpr_n4_anon_111_t88_masked_gfc".format(number)
@@ -191,10 +189,9 @@ class OASISImage(Image):
 
 def sim_data(dataset,
              data_resolution='1mm_07mm',
-             patients_frac=1,
-             train_frac=0.7,
-             val_frac=.15,
-             test_frac=.15,
+             nr_train_patients=30,
+             nr_val_patients=10,
+             nr_test_patients=10,
              middle_slices=50,
              every_other=1,
              root_dir='data',
@@ -209,19 +206,17 @@ def sim_data(dataset,
         path = os.path.join(root_dir, "brain_simulated_t1w_mri", data_resolution, 'HR_img/')
         fnames = glob(path + "*.nii.gz")
         ids = sorted(list(map(int, [(fnames[i][-64:-58]) for i in range(len(fnames))])))
-    # random.shuffle(ids)
+    random.shuffle(ids)
 
-    # define data splits
-    split1 = int(np.floor(patients_frac * train_frac * len(ids)))
-    split2 = split1 + int(np.floor(patients_frac * val_frac * len(ids)))
-    split3 = split2 + int(np.floor(patients_frac * test_frac * len(ids)))
+    if nr_train_patients + nr_val_patients + nr_test_patients > 200:
+        raise ValueError("Total number of patients should be 200 or less")
 
     if dataset == 'training':
-        ids_split = ids[:split1]
+        ids_split = ids[:nr_train_patients]
     elif dataset == 'validation':
-        ids_split = ids[split1:split2]
+        ids_split = ids[-nr_val_patients-nr_test_patients:-nr_test_patients]
     elif dataset == 'test':
-        ids_split = ids[split2:split3]
+        ids_split = ids[-nr_test_patients:]
     else:
         raise ValueError("Dataset '{}' not recognized, use 'training, 'validation' or 'test' instead".format(dataset))
 
@@ -236,44 +231,28 @@ def sim_data(dataset,
     return subjects
 
 
-def MRBrainS18_data(root_dir='data', middle_slices=50, every_other=1):
-    path = root_dir + "/brain_real_t1w_mri/MRBrainS18/GT/"
-    fnames = glob(path + "*.nii.gz")
-    ids = sorted(list(map(int, [(fnames[i][-15:-14]) for i in range(len(fnames))])))
-    # make arrays
-    subjects = []
-    print('Loading MRBrainS18 dataset...')
-
-    for num in ids:
-        data = MRBrainS18Image(num, root_dir=root_dir, middle_slices=middle_slices, every_other=every_other)
-        subjects.append(data.subject())
-    return subjects
-
-
 def HCP_data(dataset,
              root_dir='data',
              middle_slices=50,
              every_other=1,
-             patients_frac=1,
-             train_frac=0.7,
-             val_frac=.15,
-             test_frac=.15,
+             nr_train_patients=30,
+             nr_val_patients=10,
+             nr_test_patients=10,
              ):
     path = root_dir + "/brain_real_t1w_mri/HCP/HR/"
     fnames = glob(path + "*.nii.gz")
     ids = sorted(list(map(int, [(fnames[i][-29:-23]) for i in range(len(fnames))])))
+    random.shuffle(ids)
 
-    # define data splits
-    split1 = int(np.floor(patients_frac * train_frac * len(ids)))
-    split2 = split1 + int(np.floor(patients_frac * val_frac * len(ids)))
-    split3 = split2 + int(np.floor(patients_frac * test_frac * len(ids)))
+    if nr_train_patients + nr_val_patients + nr_test_patients > 50:
+        raise ValueError("Total number of patients should be 50 or less")
 
     if dataset == 'training':
-        ids_split = ids[:split1]
+        ids_split = ids[:nr_train_patients]
     elif dataset == 'validation':
-        ids_split = ids[split1:split2]
+        ids_split = ids[-nr_val_patients-nr_test_patients:-nr_test_patients]
     elif dataset == 'test':
-        ids_split = ids[split2:split3]
+        ids_split = ids[-nr_test_patients:]
     else:
         raise ValueError("Dataset '{}' not recognized, use 'training, 'validation' or 'test' instead".format(dataset))
 
@@ -287,14 +266,69 @@ def HCP_data(dataset,
     return subjects
 
 
-def mixed_data(dataset, patients_frac, middle_slices=None, root_dir='data', every_other=1):
-    sim_subjects = sim_data(dataset=dataset, patients_frac=patients_frac / 4, middle_slices=middle_slices,
-                            root_dir=root_dir, every_other=every_other)
-    hcp_subjects = HCP_data(dataset=dataset, patients_frac=patients_frac / 2, middle_slices=middle_slices,
-                            root_dir=root_dir, every_other=every_other)
-    mixed = sim_subjects + hcp_subjects
-    random.shuffle(mixed)
-    return mixed
+def MRBrainS18_data(dataset,
+                    root_dir='data',
+                    middle_slices=50,
+                    every_other=1):
+    path = root_dir + "/brain_real_t1w_mri/MRBrainS18/GT/"
+    fnames = glob(path + "*.nii.gz")
+    ids = sorted(list(map(int, [(fnames[i][-15:-14]) for i in range(len(fnames))])))
+    # make arrays
+    subjects = []
+    print('Loading MRBrainS18 dataset...')
+
+    if dataset == 'validation':
+        ids_split = ids[:3]
+    elif dataset == 'test':
+        ids_split = ids[3:]
+    else:
+        raise ValueError("Dataset '{}' not recognized, use 'validation' or 'test' instead".format(dataset))
+
+    for num in ids_split:
+        data = MRBrainS18Image(num, root_dir=root_dir, middle_slices=middle_slices, every_other=every_other)
+        subjects.append(data.subject())
+    return subjects
+
+
+def OASIS_data(dataset,
+               root_dir='data',
+               middle_slices=50,
+               every_other=1):
+    path = root_dir + "/brain_real_t1w_mri/OASIS/LR/"
+    fnames = glob(path + "*.nii.gz")
+    ids = sorted(list(map(int, [(fnames[i][-46:-42]) for i in range(len(fnames))])))
+    # make arrays
+    subjects = []
+    print('Loading OASIS dataset...')
+
+    if dataset == 'validation':
+        ids_split = ids[:5]
+    elif dataset == 'test':
+        ids_split = ids[5:]
+    else:
+        raise ValueError("Dataset '{}' not recognized, use 'validation' or 'test' instead".format(dataset))
+
+    for num in ids_split:
+        data = OASISImage(num, root_dir=root_dir, middle_slices=middle_slices, every_other=every_other)
+        subjects.append(data.subject())
+    return subjects
+
+
+def data(dataset, nr_hcp=30, nr_sim=30, middle_slices=None, root_dir='data', every_other=1):
+    subjects = []
+    if nr_hcp != 0:
+        hcp_subjects = HCP_data(dataset=dataset, nr_train_patients=nr_hcp, middle_slices=middle_slices,
+                                root_dir=root_dir, every_other=every_other)
+        subjects.extend(hcp_subjects)
+        print('HCP {} dataset with length {}'.format(dataset, len(hcp_subjects)))
+    if nr_sim != 0:
+        sim_subjects = sim_data(dataset=dataset, nr_train_patients=nr_sim, middle_slices=middle_slices,
+                                root_dir=root_dir, every_other=every_other)
+        subjects.extend(sim_subjects)
+        print('Sim {} dataset with length {}'.format(dataset, len(sim_subjects)))
+
+    random.shuffle(subjects)
+    return subjects
 
 
 def calculate_overlap(img, patch_size, ovl_perc):
@@ -468,5 +502,3 @@ def calculate_overlap(img, patch_size, ovl_perc):
 #         msk_fname = path.join(self.path, 'MSK', self.msk_fname + ".nii.gz")
 #         return {'HR': hr_fname,
 #                 'MSK': msk_fname}
-
-

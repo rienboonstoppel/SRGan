@@ -7,19 +7,19 @@ from skimage.metrics import structural_similarity as SSIM
 from skimage.metrics import normalized_root_mse as NRMSE
 import torch
 import torchio as tio
-
+import wandb
 
 def print_config(config, args):
     print('Starting a run with config:')
 
-    print_args = ['name', 'root_dir', 'num_workers',
+    print_args = ['root_dir', 'num_workers',
                   'gpus', 'max_epochs', 'precision', 'warmup_batches',  # 'max_time'
                   'std', 'middle_slices', 'every_other', 'sampler']
     print("{:<20}| {:<10}".format('Var', 'Value'))
     print('-' * 22)
     for key in config:
-        if key != 'patients_dist' and key != 'patients_frac':
-            print("{:<20}| {:<10} ".format(key, config[key]))
+        # if key != 'patients_dist' and key != 'patients_frac':
+        print("{:<20}| {:<10} ".format(key, config[key]))
 
     for arg in print_args:
         print("{:<20}| {:<10} ".format(arg, getattr(args, arg)))
@@ -28,6 +28,12 @@ def print_config(config, args):
         print("{:<20}| {:<10} ".format('GAN', 'True'))
     else:
         print("{:<20}| {:<10} ".format('GAN', 'False'))
+
+    if args.name:
+        print("{:<20}| {:<10} ".format('name', args.name))
+    else:
+        print("{:<20}| {:<10} ".format('name', wandb.run.name))
+
 
     if args.no_checkpointing:
         print("{:<20}| {:<10} ".format('checkpointing', 'best only'))
@@ -78,7 +84,7 @@ def save_subject(subject, header, pref, max_vals, source, path='output'):
                   fname=os.path.join(path, '{}_SR.nii.gz'.format(pref)),
                   source=source,
                   )
-    if source == 'sim' or source == 'hcp' or source == 'mrbrains18':
+    if source == 'sim' or source == 'hcp':# or source == 'mrbrains18':
         save_to_nifti(img=subject['HR'],
                       header=header,
                       max_val=max_vals['HR'],

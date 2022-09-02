@@ -41,10 +41,9 @@ default_config = {
     'gan_mode': 'vanilla',
     'edge_loss': 2,
     'netD_freq': 1,
-    'data_source': 'sim',
     'data_resolution': '1mm_07mm',
-    'patients_dist': (30,10,5),
-    'patients_frac': None,
+    'nr_hcp_train': 1,
+    'nr_sim_train': 1,
     'patch_overlap': 0.5,
     'generator': 'ESRGAN'
 }
@@ -57,16 +56,34 @@ def main(default_config):
     parser.add_argument('--num_workers', default=4, type=int)
     parser.add_argument('--root_dir', default='/mnt/beta/djboonstoppel/Code', type=str)
     parser.add_argument('--warmup_batches', default=2500, type=int)
-    parser.add_argument('--name', required=True, type=str)
+    parser.add_argument('--name', required=False, type=str)
     parser.add_argument('--wandb_project', default='test', type=str)
     parser.add_argument('--gan', action='store_true')
     parser.add_argument('--no_checkpointing', action='store_true')
     parser.set_defaults(gan=False)
     parser.set_defaults(no_checkpointing=False)
 
+    log_folder = 'log/sweep'
+
     # --precision=16 --gpus=1 --log_every_n_steps=50 --max_epochs=-1 --max_time="00:00:00:00"
     parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
+
+    if args.name:
+        os.makedirs(os.path.join(args.root_dir, log_folder, args.name), exist_ok=True)
+        wandb.init(config=default_config,
+                   project=args.wandb_project,
+                   name=args.name,
+                   # group="DDP",
+                   dir=os.path.join(args.root_dir, log_folder, args.name)
+                   )
+    else:
+        wandb.init(config=default_config,
+                   project=args.wandb_project,
+                   # group="DDP",
+                   )
+        os.makedirs(os.path.join(args.root_dir, log_folder, wandb.run.name), exist_ok=True)
+
 
     if args.gan:
         parser = LitTrainer_gan.add_model_specific_args(parser)
@@ -74,14 +91,8 @@ def main(default_config):
     else:
         parser = LitTrainer_org.add_model_specific_args(parser)
         args = parser.parse_args()
-    os.makedirs(os.path.join(args.root_dir, 'log', args.name), exist_ok=True)
-    wandb.init(config=default_config,
-               project=args.wandb_project,
-               name=args.name,
-               # group="DDP",
-               dir=os.path.join(args.root_dir, 'log', args.name))
-    config = wandb.config
 
+    config = wandb.config
     print_config(config.as_dict(), args)
 
     if config.generator == 'ESRGAN':
@@ -100,39 +111,46 @@ def main(default_config):
     feature_extractor = FeatureExtractor()
 
     logger = WandbLogger(project=args.wandb_project,
-                         name=args.name,
-                         save_dir=os.path.join(args.root_dir, 'log', args.name),
+                         name=wandb.run.name,
+                         save_dir=os.path.join(args.root_dir, log_folder, wandb.run.name),
                          log_model=False, )
 
     lr_monitor = LearningRateMonitor(logging_interval='step')
 
     early_stop_callback = EarlyStopping(monitor='val_loss',
                                         min_delta=0.00,
-                                        patience=15,
+                                        patience=3,
+                                        verbose=False,
+                                        mode='min',
+                                        check_finite=True)
+
+    early_stop_callback_if_nan = EarlyStopping(monitor='NCC_mean',
+                                        min_delta=0.00,
+                                        patience=25,
                                         verbose=False,
                                         mode='min',
                                         check_finite=True)
 
     checkpoint_callback_best = ModelCheckpoint(
         monitor="SSIM_mean",
-        dirpath=os.path.join(args.root_dir, 'log', args.name),
-        filename=args.name + "-checkpoint-best",
+        dirpath=os.path.join(args.root_dir, log_folder, wandb.run.name),
+        filename=wandb.run.name + "-checkpoint-best",
         save_top_k=1,
         mode="max",
     )
 
     checkpoint_callback_time = ModelCheckpoint(
-        dirpath=os.path.join(args.root_dir, 'log', args.name),
-        filename=args.name + "-checkpoint-{epoch}",
+        dirpath=os.path.join(args.root_dir, log_folder, wandb.run.name),
+        filename=wandb.run.name + "-checkpoint-{epoch}",
         save_top_k=-1,
         # train_time_interval=timedelta(minutes=2),
         every_n_epochs=1,
     )
 
     if args.no_checkpointing:
-        callbacks = [lr_monitor, early_stop_callback, checkpoint_callback_best]#, ModelPruning("l1_unstructured", amount=0.5)]
+        callbacks = [lr_monitor, early_stop_callback, early_stop_callback_if_nan, checkpoint_callback_best]#, ModelPruning("l1_unstructured", amount=0.5)]
     else:
-        callbacks = [lr_monitor, early_stop_callback, checkpoint_callback_best, checkpoint_callback_time]#, ModelPruning("l1_unstructured", amount=0.5)]
+        callbacks = [lr_monitor, early_stop_callback, early_stop_callback_if_nan, checkpoint_callback_best, checkpoint_callback_time]#, ModelPruning("l1_unstructured", amount=0.5)]
 
     if args.gan:
         model = LitTrainer_gan(netG=generator, netF=feature_extractor, netD=discriminator, args=args, config=config)

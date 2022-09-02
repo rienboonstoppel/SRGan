@@ -1,41 +1,34 @@
 program: main.py
-method: grid
-project: sweep
+method: random
+project: sweep-trainmix
 metric:
   goal: maximize
   name: SSIM_mean
 parameters:
-#  ragan:
-#    values: [True, False]
-#  gan_mode:
-#    values: [vanilla, wgan]
-#  generator:
-#    values: [ESRGAN, RRDB, DeepUResnet, FSRCNN]
-  data_source:
-    values: [mixed, sim, hcp]
-#  alpha_edge:
+#  parameter:
+#    distribution: constant
+#    value: 1
+#  parameter:
+#    distribution: categorical
+#    values: [1,2,3]
+#  parameter:
 #    distribution: uniform
 #    min: 0.01
-#    max: 1
-#  alpha_pixel:
-#    distribution: uniform
-#    min: 0.01
-#    max: 1
-#  alpha_perceptual:
-#    distribution: uniform
-#    min: 0.01
-#    max: 1
-#  alpha_adversarial:
-#    distribution: uniform
-#    min: 0.01
-#    max: 0.5
+#    max: 10
+  nr_hcp_train:
+    distribution: categorical
+    values: [1,2,5,10,20,30]
+  nr_sim_train:
+    distribution: categorical
+    values: [1,2,5,10,20,30,50]
+
 command:
   - python
   - ${program}
   - --gpus=1
   - --log_every_n_steps=50
-  - --max_epochs=15
-  - --name=data_source
+  - --max_epochs=25
   - --gan
   - --num_sanity_val_steps=0
-  - --wandb_project=sweep
+  - --wandb_project=sweep-trainmix
+  - --no_checkpointing

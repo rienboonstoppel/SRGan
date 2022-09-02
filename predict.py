@@ -12,7 +12,7 @@ from models.feature_extractor import FeatureExtractor
 from argparse import ArgumentParser
 from utils import print_config, save_subject
 from dataset_tio import SimImage, MRBrainS18Image, HCPImage, OASISImage, calculate_overlap, sim_data, \
-    MRBrainS18_data, HCP_data
+    MRBrainS18_data, HCP_data, OASIS_data
 from transform import Normalize, RandomIntensity, RandomGamma, RandomBiasField
 from metrics import get_scores
 import time
@@ -38,14 +38,14 @@ default_config = {
     'gan_mode': 'vanilla',
     'edge_loss': 2,
     'netD_freq': 1,
-    'data_source': 'sim',
     'data_resolution': '1mm_07mm',
-    'patients_frac': 0.5,
+    'nr_hcp_train': 1,
+    'nr_sim_train': 1,
     'patch_overlap': 0.5,
     'generator': 'ESRGAN'
 }
-#test
-exp_name = 'transforms-mixed-2'
+
+exp_name = 'mixed15'
 epoch = 20
 ckpt_fname = '{}-checkpoint-epoch={}.ckpt'.format(exp_name, epoch)
 ckpt_path = os.path.join('log', exp_name, ckpt_fname)
@@ -63,7 +63,7 @@ def main(config, ckpt_path):
     parser.add_argument('--name', required=True, type=str)
     parser.add_argument('--gan', action='store_true')
     parser.add_argument('--num', required=True, type=int)
-    parser.add_argument('--source', required=True, type=str, choices=['sim', 'mrbrains18', 'hcp', 'hcp_gen', 'oasis'])
+    parser.add_argument('--source', required=True, type=str, choices=['sim', 'mrbrains', 'hcp', 'oasis'])
     parser.set_defaults(gan=False)
 
     args = parser.parse_args()
@@ -76,6 +76,8 @@ def main(config, ckpt_path):
         args = parser.parse_args()
 
     # config['patients_dist'] = (30,10,10)
+    # config['patients_frac'] = 0.7
+
     att_config = AttrDict(config)
 
     if att_config.generator == 'ESRGAN':
@@ -93,117 +95,155 @@ def main(config, ckpt_path):
     discriminator = Discriminator(input_shape=(1, att_config.patch_size, att_config.patch_size))
     feature_extractor = FeatureExtractor()
 
+    data_path = os.path.join(args.root_dir, 'data')
+
+    # TODO
     if args.source == 'sim':
-        img = SimImage(number=args.num,
-                       middle_slices=None,
-                       every_other=1,
-                       data_resolution=att_config.data_resolution,
-                       augment=False)
+        val_subjects = sim_data(dataset='validation',
+                            nr_train_patients = att_config.patients_dist,
+                            patients_frac=att_config.patients_frac,
+                            root_dir=data_path,
+                            middle_slices=args.middle_slices,
+                            every_other=args.every_other)
     elif args.source == 'hcp':
-        img = HCPImage(number=args.num,
-                       middle_slices=None,
-                       every_other=1,
-                       augment=False)
-    # elif args.source == 'hcp_gen':
-    #     img = HCPImageGen(number=args.num,
-    #                       middle_slices=None,
-    #                       every_other=1,
-    #                       augment=False)
-    elif args.source == 'mrbrains18':
-        img = MRBrainS18Image(number=args.num,
-                              middle_slices=None,
-                              every_other=1)
+        val_subjects = HCP_data(dataset='validation',
+                            patients_dist=att_config.patients_dist,
+                            patients_frac=att_config.patients_frac,
+                            root_dir=data_path,
+                            middle_slices=args.middle_slices,
+                            every_other=args.every_other)
     elif args.source == 'oasis':
-        img = OASISImage(number=args.num,
-                         middle_slices=None,
-                         every_other=1)
+        val_subjects = OASIS_data(dataset='validation',
+                            root_dir=data_path,
+                            middle_slices=args.middle_slices,
+                            every_other=args.every_other)
+    elif args.source == 'mrbrains':
+        val_subjects = MRBrainS18_data(dataset='validation',
+                            root_dir=data_path,
+                            middle_slices=args.middle_slices,
+                            every_other=args.every_other)
     else:
-        raise ValueError("Source '{}' not recognized".format(args.source))
-    subject = img.subject()
+        raise ValueError("Dataset '{}' not implemented".format(args.source))
 
-    path = os.path.join(args.root_dir, ckpt_path)
+    num_val_subjects = len(val_subjects)
+    val_transform = tio.Compose([
+        Normalize(std=args.std),
+    ])
 
-    overlap, nr_patches = calculate_overlap(subject,
-                                            (att_config.patch_size, att_config.patch_size),
-                                            (att_config.patch_overlap, att_config.patch_overlap))
+    val_set = tio.SubjectsDataset(
+        val_subjects, transform=val_transform)
 
-    test_set = tio.SubjectsDataset(
-        [subject], transform=Normalize(std=args.std))
-
-    grid_sampler = tio.inference.GridSampler(
-        test_set[0],
-        patch_size=(att_config.patch_size, att_config.patch_size, 1),
-        patch_overlap=overlap,
-        padding_mode=0,
-    )
-
-    if args.gan:
-        model = LitTrainer_gan.load_from_checkpoint(
-            netG=generator,
-            netF=feature_extractor,
-            netD=discriminator,
-            checkpoint_path=path,
-            config=att_config,
-            args=args
-        )
-    else:
-        model = LitTrainer_org.load_from_checkpoint(
-            netG=generator,
-            netF=feature_extractor,
-            checkpoint_path=path,
-            config=att_config,
-            args=args
-        )
-
-    model.to(device)
-    model.eval()
-
-    aggregator = tio.inference.GridAggregator(grid_sampler)  # , overlap_mode='average')
-
-    patch_loader = torch.utils.data.DataLoader(
-        grid_sampler, batch_size=att_config.batch_size)
-
-    start_time = time.time()
-
-    with torch.no_grad():
-        for patches_batch in patch_loader:
-            if att_config.data_resolution == '2mm_1mm' or args.source == 'mrbrains18':
-                imgs_hr = patches_batch['HR'][tio.DATA].squeeze(4)
-                imgs_sr = model(imgs_hr.to(device)).unsqueeze(4)
-            else:
-                imgs_lr = patches_batch['LR'][tio.DATA].squeeze(4)
-                imgs_sr = model(imgs_lr.to(device)).unsqueeze(4)
-
-            locations = patches_batch[tio.LOCATION]
-            aggregator.add_batch(imgs_sr, locations)
-
-    end_time = time.time()
-    print('Time: {:.10f} s'.format(end_time - start_time))
-
-    foreground = aggregator.get_output_tensor() * args.std
-
-    generated = tio.ScalarImage(tensor=foreground)
-    subject.add_image(generated, 'SR')
-
-    header = img.info()['LR']['header']
-    max_vals = {
-        'LR': img.info()['LR']['scaling'],
-        'SR': img.info()['LR']['scaling'],
-    }
-
-    if args.source == 'sim' or args.source == 'hcp' or args.source == 'mrbrains18':
-        max_vals['HR'] = img.info()['HR']['scaling']
-
-    # output_path = 'output/' + os.path.split(os.path.split(ckpt_path)[0])[1]
-    output_path = 'output/control'
-
-    save_subject(subject=subject,
-                 header=header,
-                 max_vals=max_vals,
-                 pref=args.name,
-                 path=output_path,
-                 source=args.source
-                 )
+    # if args.source == 'sim':
+    #     img = SimImage(number=args.num,
+    #                    middle_slices=None,
+    #                    every_other=1,
+    #                    data_resolution=att_config.data_resolution,
+    #                    augment=False)
+    # elif args.source == 'hcp':
+    #     img = HCPImage(number=args.num,
+    #                    middle_slices=None,
+    #                    every_other=1,
+    #                    augment=False)
+    # # elif args.source == 'hcp_gen':
+    # #     img = HCPImageGen(number=args.num,
+    # #                       middle_slices=None,
+    # #                       every_other=1,
+    # #                       augment=False)
+    # elif args.source == 'mrbrains18':
+    #     img = MRBrainS18Image(number=args.num,
+    #                           middle_slices=None,
+    #                           every_other=1)
+    # elif args.source == 'oasis':
+    #     img = OASISImage(number=args.num,
+    #                      middle_slices=None,
+    #                      every_other=1)
+    # else:
+    #     raise ValueError("Source '{}' not recognized".format(args.source))
+    # subject = img.subject()
+    #
+    # path = os.path.join(args.root_dir, ckpt_path)
+    #
+    # overlap, nr_patches = calculate_overlap(subject,
+    #                                         (att_config.patch_size, att_config.patch_size),
+    #                                         (att_config.patch_overlap, att_config.patch_overlap))
+    #
+    # test_set = tio.SubjectsDataset(
+    #     [subject], transform=Normalize(std=args.std))
+    #
+    # grid_sampler = tio.inference.GridSampler(
+    #     test_set[0],
+    #     patch_size=(att_config.patch_size, att_config.patch_size, 1),
+    #     patch_overlap=overlap,
+    #     padding_mode=0,
+    # )
+    #
+    # if args.gan:
+    #     model = LitTrainer_gan.load_from_checkpoint(
+    #         netG=generator,
+    #         netF=feature_extractor,
+    #         netD=discriminator,
+    #         checkpoint_path=path,
+    #         config=att_config,
+    #         args=args
+    #     )
+    # else:
+    #     model = LitTrainer_org.load_from_checkpoint(
+    #         netG=generator,
+    #         netF=feature_extractor,
+    #         checkpoint_path=path,
+    #         config=att_config,
+    #         args=args
+    #     )
+    #
+    # model.to(device)
+    # model.eval()
+    #
+    # aggregator = tio.inference.GridAggregator(grid_sampler)  # , overlap_mode='average')
+    #
+    # patch_loader = torch.utils.data.DataLoader(
+    #     grid_sampler, batch_size=att_config.batch_size)
+    #
+    # start_time = time.time()
+    #
+    # with torch.no_grad():
+    #     for patches_batch in patch_loader:
+    #         if att_config.data_resolution == '2mm_1mm': # or args.source == 'mrbrains18':
+    #             imgs_hr = patches_batch['HR'][tio.DATA].squeeze(4)
+    #             imgs_sr = model(imgs_hr.to(device)).unsqueeze(4)
+    #         else:
+    #             imgs_lr = patches_batch['LR'][tio.DATA].squeeze(4)
+    #             imgs_sr = model(imgs_lr.to(device)).unsqueeze(4)
+    #
+    #         locations = patches_batch[tio.LOCATION]
+    #         aggregator.add_batch(imgs_sr, locations)
+    #
+    # end_time = time.time()
+    # print('Time: {:.10f} s'.format(end_time - start_time))
+    #
+    # foreground = aggregator.get_output_tensor() * args.std
+    #
+    # generated = tio.ScalarImage(tensor=foreground)
+    # subject.add_image(generated, 'SR')
+    #
+    # header = img.info()['LR']['header']
+    # max_vals = {
+    #     'LR': img.info()['LR']['scaling'],
+    #     'SR': img.info()['LR']['scaling'],
+    # }
+    #
+    # if args.source == 'sim' or args.source == 'hcp': # or args.source == 'mrbrains18':
+    #     max_vals['HR'] = img.info()['HR']['scaling']
+    #
+    # # output_path = 'output/' + os.path.split(os.path.split(ckpt_path)[0])[1]
+    # output_path = 'output/finally'
+    #
+    # save_subject(subject=subject,
+    #              header=header,
+    #              max_vals=max_vals,
+    #              pref=args.name,
+    #              path=output_path,
+    #              source=args.source
+    #              )
 
 
 if __name__ == '__main__':
