@@ -35,7 +35,7 @@ class LitTrainer(pl.LightningModule):
                  ):
         super().__init__()
         self.args = args
-        # self.save_hyperparameters(ignore=['netG', 'netF', 'netD'])
+        self.save_hyperparameters(ignore=['netG', 'netF', 'netD'])
 
         self.netG = netG
         self.netF = netF.eval()

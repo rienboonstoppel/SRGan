@@ -19,8 +19,6 @@ from pytorch_lightning.loggers import WandbLogger
 import wandb
 import warnings
 
-
-
 warnings.filterwarnings('ignore', '.*wandb run already in progress.*')
 
 ### Single config ###
@@ -63,7 +61,7 @@ def main(default_config):
     parser.set_defaults(gan=False)
     parser.set_defaults(no_checkpointing=False)
 
-    log_folder = 'log/sweep'
+    log_folder = 'log/sweep-2'
 
     # --precision=16 --gpus=1 --log_every_n_steps=50 --max_epochs=-1 --max_time="00:00:00:00"
     parser = pl.Trainer.add_argparse_args(parser)
@@ -71,19 +69,16 @@ def main(default_config):
 
     if args.name:
         os.makedirs(os.path.join(args.root_dir, log_folder, args.name), exist_ok=True)
-        wandb.init(config=default_config,
+        run = wandb.init(config=default_config,
                    project=args.wandb_project,
                    name=args.name,
-                   # group="DDP",
                    dir=os.path.join(args.root_dir, log_folder, args.name)
                    )
     else:
-        wandb.init(config=default_config,
+        run = wandb.init(config=default_config,
                    project=args.wandb_project,
-                   # group="DDP",
                    )
         os.makedirs(os.path.join(args.root_dir, log_folder, wandb.run.name), exist_ok=True)
-
 
     if args.gan:
         parser = LitTrainer_gan.add_model_specific_args(parser)
@@ -92,8 +87,8 @@ def main(default_config):
         parser = LitTrainer_org.add_model_specific_args(parser)
         args = parser.parse_args()
 
-    config = wandb.config
-    print_config(config.as_dict(), args)
+    config = run.config_static
+    # print_config(config, args)
 
     if config.generator == 'ESRGAN':
         generator = generator_ESRGAN(channels=1, filters=config.num_filters, num_res_blocks=1)
@@ -119,7 +114,7 @@ def main(default_config):
 
     early_stop_callback = EarlyStopping(monitor='val_loss',
                                         min_delta=0.00,
-                                        patience=3,
+                                        patience=5,
                                         verbose=False,
                                         mode='min',
                                         check_finite=True)

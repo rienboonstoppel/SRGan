@@ -10,45 +10,30 @@ from models.generator_DeepUResnet import DeepUResnet as generator_DeepUResnet
 from models.discriminator import Discriminator
 from models.feature_extractor import FeatureExtractor
 from argparse import ArgumentParser
-from utils import print_config, save_subject
+from utils import print_config, save_subject, save_to_nifti
 from dataset_tio import SimImage, MRBrainS18Image, HCPImage, OASISImage, calculate_overlap, sim_data, \
     MRBrainS18_data, HCP_data, OASIS_data
 from transform import Normalize, RandomIntensity, RandomGamma, RandomBiasField
 from metrics import get_scores
 import time
-
+from glob import glob
+from tqdm import tqdm
 
 device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
 
-### Single config ###
-default_config = {
-    'optimizer': 'adam',
-    'b1': 0.9,
-    'b2': 0.5,
-    'batch_size': 16,
-    'num_filters': 64,
-    'learning_rate_G': 2e-5,
-    'learning_rate_D': 2e-5,
-    'patch_size': 64,
-    'alpha_edge': 0.3,
-    'alpha_pixel': 0.7,
-    'alpha_perceptual': 1,
-    'alpha_adversarial': 0.1,
-    'ragan': False,
-    'gan_mode': 'vanilla',
-    'edge_loss': 2,
-    'netD_freq': 1,
-    'data_resolution': '1mm_07mm',
-    'nr_hcp_train': 1,
-    'nr_sim_train': 1,
-    'patch_overlap': 0.5,
-    'generator': 'ESRGAN'
-}
+# ## Single runs
+# exp_name = 'test-checkpoint-1'
+# epoch = 4
+# ckpt_fname1 = '{}-checkpoint-epoch={}.ckpt'.format(exp_name, 1)
+# ckpt_fname2 = '{}-checkpoint-epoch={}.ckpt'.format(exp_name, 4)
+# ckpt_paths = [os.path.join('log', exp_name, ckpt_fname1), os.path.join('log', exp_name, ckpt_fname2)]
 
-exp_name = 'mixed15'
-epoch = 20
-ckpt_fname = '{}-checkpoint-epoch={}.ckpt'.format(exp_name, epoch)
-ckpt_path = os.path.join('log', exp_name, ckpt_fname)
+# Sweep
+# run_id = 62
+# ckpt_path = glob('log/sweep-2/*/*'+str(run_id)+'*')[0]
+
+run_ids = [1,2,3,4]
+ckpt_paths = [glob('log/sweep-2/*/*'+str(run_id)+'*')[0] for run_id in run_ids]
 
 
 class AttrDict(dict):
@@ -57,13 +42,15 @@ class AttrDict(dict):
         self.__dict__ = self
 
 
-def main(config, ckpt_path):
+def main(ckpt_paths):
     parser = ArgumentParser()
     parser.add_argument('--root_dir', default='/mnt/beta/djboonstoppel/Code', type=str)
-    parser.add_argument('--name', required=True, type=str)
     parser.add_argument('--gan', action='store_true')
-    parser.add_argument('--num', required=True, type=int)
     parser.add_argument('--source', required=True, type=str, choices=['sim', 'mrbrains', 'hcp', 'oasis'])
+    parser.add_argument('--generator', default='ESRGAN', type=str, choices=['ESRGAN', 'RRDB', 'DeepUResnet', 'FSRCNN'])
+    parser.add_argument('--num_filters', default=64, type=int)
+    parser.add_argument('--patch_size', default=64, type=int)
+    parser.add_argument('--patch_overlap', default=0.5, type=float)
     parser.set_defaults(gan=False)
 
     args = parser.parse_args()
@@ -75,176 +62,138 @@ def main(config, ckpt_path):
         parser = LitTrainer_org.add_model_specific_args(parser)
         args = parser.parse_args()
 
-    # config['patients_dist'] = (30,10,10)
-    # config['patients_frac'] = 0.7
-
-    att_config = AttrDict(config)
-
-    if att_config.generator == 'ESRGAN':
-        generator = generator_ESRGAN(channels=1, filters=att_config.num_filters, num_res_blocks=1)
-    elif att_config.generator == 'RRDB':
-        generator = generator_RRDB(channels=1, filters=att_config.num_filters, num_res_blocks=1)
-    elif att_config.generator == 'DeepUResnet':
-        generator = generator_DeepUResnet(nrfilters=att_config.num_filters)
-    elif att_config.generator == 'FSRCNN':
+    if args.generator == 'ESRGAN':
+        generator = generator_ESRGAN(channels=1, filters=args.num_filters, num_res_blocks=1)
+    elif args.generator == 'RRDB':
+        generator = generator_RRDB(channels=1, filters=args.num_filters, num_res_blocks=1)
+    elif args.generator == 'DeepUResnet':
+        generator = generator_DeepUResnet(nrfilters=args.num_filters)
+    elif args.generator == 'FSRCNN':
         generator = generator_FSRCNN(scale_factor=1)
     else:
         raise NotImplementedError(
-            "Generator architecture '{}' is not recognized or implemented".format(config.generator))
+            "Generator architecture '{}' is not recognized or implemented".format(args.generator))
 
-    discriminator = Discriminator(input_shape=(1, att_config.patch_size, att_config.patch_size))
+    discriminator = Discriminator(input_shape=(1, args.patch_size, args.patch_size))
     feature_extractor = FeatureExtractor()
 
     data_path = os.path.join(args.root_dir, 'data')
 
-    # TODO
+    args.middle_slices = None
+
     if args.source == 'sim':
-        val_subjects = sim_data(dataset='validation',
-                            nr_train_patients = att_config.patients_dist,
-                            patients_frac=att_config.patients_frac,
-                            root_dir=data_path,
-                            middle_slices=args.middle_slices,
-                            every_other=args.every_other)
+        val_subjects, subjects_info = sim_data(dataset='validation',
+                                root_dir=data_path,
+                                middle_slices=args.middle_slices,
+                                every_other=args.every_other)
     elif args.source == 'hcp':
-        val_subjects = HCP_data(dataset='validation',
-                            patients_dist=att_config.patients_dist,
-                            patients_frac=att_config.patients_frac,
-                            root_dir=data_path,
-                            middle_slices=args.middle_slices,
-                            every_other=args.every_other)
+        val_subjects, subjects_info = HCP_data(dataset='validation',
+                                root_dir=data_path,
+                                middle_slices=args.middle_slices,
+                                every_other=args.every_other)
     elif args.source == 'oasis':
-        val_subjects = OASIS_data(dataset='validation',
-                            root_dir=data_path,
-                            middle_slices=args.middle_slices,
-                            every_other=args.every_other)
+        val_subjects, subjects_info = OASIS_data(dataset='validation',
+                                  root_dir=data_path,
+                                  middle_slices=args.middle_slices,
+                                  every_other=args.every_other)
     elif args.source == 'mrbrains':
-        val_subjects = MRBrainS18_data(dataset='validation',
-                            root_dir=data_path,
-                            middle_slices=args.middle_slices,
-                            every_other=args.every_other)
+        val_subjects, subjects_info = MRBrainS18_data(dataset='validation',
+                                       root_dir=data_path,
+                                       middle_slices=args.middle_slices,
+                                       every_other=args.every_other)
     else:
         raise ValueError("Dataset '{}' not implemented".format(args.source))
 
-    num_val_subjects = len(val_subjects)
+    overlap, nr_patches = calculate_overlap(val_subjects[0],
+                                            (args.patch_size, args.patch_size),
+                                            (args.patch_overlap, args.patch_overlap))
     val_transform = tio.Compose([
         Normalize(std=args.std),
     ])
-
     val_set = tio.SubjectsDataset(
         val_subjects, transform=val_transform)
 
-    # if args.source == 'sim':
-    #     img = SimImage(number=args.num,
-    #                    middle_slices=None,
-    #                    every_other=1,
-    #                    data_resolution=att_config.data_resolution,
-    #                    augment=False)
-    # elif args.source == 'hcp':
-    #     img = HCPImage(number=args.num,
-    #                    middle_slices=None,
-    #                    every_other=1,
-    #                    augment=False)
-    # # elif args.source == 'hcp_gen':
-    # #     img = HCPImageGen(number=args.num,
-    # #                       middle_slices=None,
-    # #                       every_other=1,
-    # #                       augment=False)
-    # elif args.source == 'mrbrains18':
-    #     img = MRBrainS18Image(number=args.num,
-    #                           middle_slices=None,
-    #                           every_other=1)
-    # elif args.source == 'oasis':
-    #     img = OASISImage(number=args.num,
-    #                      middle_slices=None,
-    #                      every_other=1)
-    # else:
-    #     raise ValueError("Source '{}' not recognized".format(args.source))
-    # subject = img.subject()
+    grid_samplers = []
+    for i in range(len(val_subjects)):
+        grid_sampler = tio.inference.GridSampler(
+            val_set[i],
+            patch_size=(args.patch_size, args.patch_size, 1),
+            patch_overlap=overlap,
+            padding_mode=0,
+        )
+        grid_samplers.append(grid_sampler)
+
+    # j = 1
+    for ckpt_path in ckpt_paths:
+        path = os.path.join(args.root_dir, ckpt_path)
+        if args.gan:
+            model = LitTrainer_gan.load_from_checkpoint(
+                netG=generator,
+                netF=feature_extractor,
+                netD=discriminator,
+                checkpoint_path=path,
+            )
+        else:
+            model = LitTrainer_org.load_from_checkpoint(
+                netG=generator,
+                netF=feature_extractor,
+                checkpoint_path=path,
+            )
+        print('Checkpoint trained on {} hcp subjects and {} sim subjects'.format(model.hparams.config['nr_hcp_train'],
+                                                                                 model.hparams.config['nr_sim_train']))
+
+        model.to(device)
+        model.eval()
+
+        for i in tqdm(range(len(grid_samplers))):
+            output_path = os.path.join('output/sweep-2', args.source + '_' + str(subjects_info[i]['id']))
+            os.makedirs(output_path, exist_ok=True)
+
+            aggregator = tio.inference.GridAggregator(grid_samplers[i])  # , overlap_mode='average')
+
+            patch_loader = torch.utils.data.DataLoader(
+                grid_samplers[i], batch_size=model.hparams.config['batch_size'])
+
+            # start_time = time.time()
+
+            with torch.no_grad():
+                for patches_batch in patch_loader:
+                    imgs_lr = patches_batch['LR'][tio.DATA].squeeze(4)
+                    imgs_sr = model(imgs_lr.to(device)).unsqueeze(4)
+
+                    locations = patches_batch[tio.LOCATION]
+                    aggregator.add_batch(imgs_sr, locations)
+
+            # end_time = time.time()
+            # print('Time: {:.10f} s'.format(end_time - start_time))
+
+            foreground = aggregator.get_output_tensor() * args.std
+            generated = tio.ScalarImage(tensor=foreground)
+            sr = tio.Subject({'SR': generated})
+
+            save_to_nifti(img=sr['SR'],
+                          header=subjects_info[i]['LR']['header'],
+                          max_val=subjects_info[i]['LR']['scaling'],
+                          fname=os.path.join(output_path, 'SR_hcp{}_sim{}.nii.gz'.format(model.hparams.config['nr_hcp_train'],
+                                                                                         model.hparams.config['nr_sim_train'])),
+                          source=args.source,
+                          )
+
+    # save_to_nifti(img=val_subjects[0]['LR'],
+    #               header=subjects_info[0]['LR']['header'],
+    #               max_val=subjects_info[0]['LR']['scaling'],
+    #               fname=os.path.join(output_path, 'LR.nii.gz'),
+    #               source=args.source,
+    #               )
     #
-    # path = os.path.join(args.root_dir, ckpt_path)
-    #
-    # overlap, nr_patches = calculate_overlap(subject,
-    #                                         (att_config.patch_size, att_config.patch_size),
-    #                                         (att_config.patch_overlap, att_config.patch_overlap))
-    #
-    # test_set = tio.SubjectsDataset(
-    #     [subject], transform=Normalize(std=args.std))
-    #
-    # grid_sampler = tio.inference.GridSampler(
-    #     test_set[0],
-    #     patch_size=(att_config.patch_size, att_config.patch_size, 1),
-    #     patch_overlap=overlap,
-    #     padding_mode=0,
-    # )
-    #
-    # if args.gan:
-    #     model = LitTrainer_gan.load_from_checkpoint(
-    #         netG=generator,
-    #         netF=feature_extractor,
-    #         netD=discriminator,
-    #         checkpoint_path=path,
-    #         config=att_config,
-    #         args=args
-    #     )
-    # else:
-    #     model = LitTrainer_org.load_from_checkpoint(
-    #         netG=generator,
-    #         netF=feature_extractor,
-    #         checkpoint_path=path,
-    #         config=att_config,
-    #         args=args
-    #     )
-    #
-    # model.to(device)
-    # model.eval()
-    #
-    # aggregator = tio.inference.GridAggregator(grid_sampler)  # , overlap_mode='average')
-    #
-    # patch_loader = torch.utils.data.DataLoader(
-    #     grid_sampler, batch_size=att_config.batch_size)
-    #
-    # start_time = time.time()
-    #
-    # with torch.no_grad():
-    #     for patches_batch in patch_loader:
-    #         if att_config.data_resolution == '2mm_1mm': # or args.source == 'mrbrains18':
-    #             imgs_hr = patches_batch['HR'][tio.DATA].squeeze(4)
-    #             imgs_sr = model(imgs_hr.to(device)).unsqueeze(4)
-    #         else:
-    #             imgs_lr = patches_batch['LR'][tio.DATA].squeeze(4)
-    #             imgs_sr = model(imgs_lr.to(device)).unsqueeze(4)
-    #
-    #         locations = patches_batch[tio.LOCATION]
-    #         aggregator.add_batch(imgs_sr, locations)
-    #
-    # end_time = time.time()
-    # print('Time: {:.10f} s'.format(end_time - start_time))
-    #
-    # foreground = aggregator.get_output_tensor() * args.std
-    #
-    # generated = tio.ScalarImage(tensor=foreground)
-    # subject.add_image(generated, 'SR')
-    #
-    # header = img.info()['LR']['header']
-    # max_vals = {
-    #     'LR': img.info()['LR']['scaling'],
-    #     'SR': img.info()['LR']['scaling'],
-    # }
-    #
-    # if args.source == 'sim' or args.source == 'hcp': # or args.source == 'mrbrains18':
-    #     max_vals['HR'] = img.info()['HR']['scaling']
-    #
-    # # output_path = 'output/' + os.path.split(os.path.split(ckpt_path)[0])[1]
-    # output_path = 'output/finally'
-    #
-    # save_subject(subject=subject,
-    #              header=header,
-    #              max_vals=max_vals,
-    #              pref=args.name,
-    #              path=output_path,
-    #              source=args.source
-    #              )
+    # if args.source == 'sim' or args.source == 'hcp':
+    #     save_to_nifti(img=val_subjects[0]['HR'],
+    #                   header=subjects_info[0]['HR']['header'],
+    #                   max_val=subjects_info[0]['HR']['scaling'],
+    #                   fname=os.path.join(output_path, 'HR.nii.gz'),
+    #                   source=args.source,
+    #                   )
 
 
 if __name__ == '__main__':
-    main(default_config, ckpt_path)
+    main(ckpt_paths)

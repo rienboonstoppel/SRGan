@@ -1,5 +1,5 @@
 program: main.py
-method: random
+method: grid
 project: sweep-trainmix
 metric:
   goal: maximize
@@ -26,9 +26,9 @@ command:
   - python
   - ${program}
   - --gpus=1
-  - --log_every_n_steps=50
+  - --log_every_n_steps=500
   - --max_epochs=25
   - --gan
   - --num_sanity_val_steps=0
-  - --wandb_project=sweep-trainmix
+  - --wandb_project=sweep-trainmix-2
   - --no_checkpointing

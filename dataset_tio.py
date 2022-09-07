@@ -222,13 +222,17 @@ def sim_data(dataset,
 
     # make arrays
     subjects = []
+    infos = []
     print('Loading simulated {} set...'.format(dataset))
     # for num in tqdm(ids_split, desc='Load {} set\t'.format(dataset), bar_format='{l_bar}{bar:15}{r_bar}{bar:-15b}',
     #                 leave=True, position=0):
     for num in ids_split:
         data = SimImage(num, root_dir, middle_slices, every_other, data_resolution)
         subjects.append(data.subject())
-    return subjects
+        info = data.info()
+        info['id']=num
+        infos.append(info)
+    return subjects, infos
 
 
 def HCP_data(dataset,
@@ -243,6 +247,7 @@ def HCP_data(dataset,
     fnames = glob(path + "*.nii.gz")
     ids = sorted(list(map(int, [(fnames[i][-29:-23]) for i in range(len(fnames))])))
     random.shuffle(ids)
+    # print(ids)
 
     if nr_train_patients + nr_val_patients + nr_test_patients > 50:
         raise ValueError("Total number of patients should be 50 or less")
@@ -251,6 +256,7 @@ def HCP_data(dataset,
         ids_split = ids[:nr_train_patients]
     elif dataset == 'validation':
         ids_split = ids[-nr_val_patients-nr_test_patients:-nr_test_patients]
+        print(ids_split)
     elif dataset == 'test':
         ids_split = ids[-nr_test_patients:]
     else:
@@ -258,12 +264,16 @@ def HCP_data(dataset,
 
     # make arrays
     subjects = []
+    infos = []
     print('Loading HCP {} set...'.format(dataset))
 
     for num in ids_split:
         data = HCPImage(num, root_dir=root_dir, middle_slices=middle_slices, every_other=every_other)
         subjects.append(data.subject())
-    return subjects
+        info = data.info()
+        info['id'] = num
+        infos.append(info)
+    return subjects, infos
 
 
 def MRBrainS18_data(dataset,
@@ -273,9 +283,6 @@ def MRBrainS18_data(dataset,
     path = root_dir + "/brain_real_t1w_mri/MRBrainS18/GT/"
     fnames = glob(path + "*.nii.gz")
     ids = sorted(list(map(int, [(fnames[i][-15:-14]) for i in range(len(fnames))])))
-    # make arrays
-    subjects = []
-    print('Loading MRBrainS18 dataset...')
 
     if dataset == 'validation':
         ids_split = ids[:3]
@@ -284,10 +291,17 @@ def MRBrainS18_data(dataset,
     else:
         raise ValueError("Dataset '{}' not recognized, use 'validation' or 'test' instead".format(dataset))
 
+    # make arrays
+    subjects = []
+    infos = []
+    print('Loading MRBrainS18 dataset...')
     for num in ids_split:
         data = MRBrainS18Image(num, root_dir=root_dir, middle_slices=middle_slices, every_other=every_other)
         subjects.append(data.subject())
-    return subjects
+        info = data.info()
+        info['id'] = num
+        infos.append(info)
+    return subjects, infos
 
 
 def OASIS_data(dataset,
@@ -297,9 +311,6 @@ def OASIS_data(dataset,
     path = root_dir + "/brain_real_t1w_mri/OASIS/LR/"
     fnames = glob(path + "*.nii.gz")
     ids = sorted(list(map(int, [(fnames[i][-46:-42]) for i in range(len(fnames))])))
-    # make arrays
-    subjects = []
-    print('Loading OASIS dataset...')
 
     if dataset == 'validation':
         ids_split = ids[:5]
@@ -308,21 +319,28 @@ def OASIS_data(dataset,
     else:
         raise ValueError("Dataset '{}' not recognized, use 'validation' or 'test' instead".format(dataset))
 
+    # make arrays
+    subjects = []
+    infos = []
+    print('Loading OASIS dataset...')
     for num in ids_split:
         data = OASISImage(num, root_dir=root_dir, middle_slices=middle_slices, every_other=every_other)
         subjects.append(data.subject())
-    return subjects
+        info = data.info()
+        info['id'] = num
+        infos.append(info)
+    return subjects, infos
 
 
 def data(dataset, nr_hcp=30, nr_sim=30, middle_slices=None, root_dir='data', every_other=1):
     subjects = []
     if nr_hcp != 0:
-        hcp_subjects = HCP_data(dataset=dataset, nr_train_patients=nr_hcp, middle_slices=middle_slices,
+        hcp_subjects, _ = HCP_data(dataset=dataset, nr_train_patients=nr_hcp, middle_slices=middle_slices,
                                 root_dir=root_dir, every_other=every_other)
         subjects.extend(hcp_subjects)
         print('HCP {} dataset with length {}'.format(dataset, len(hcp_subjects)))
     if nr_sim != 0:
-        sim_subjects = sim_data(dataset=dataset, nr_train_patients=nr_sim, middle_slices=middle_slices,
+        sim_subjects, _ = sim_data(dataset=dataset, nr_train_patients=nr_sim, middle_slices=middle_slices,
                                 root_dir=root_dir, every_other=every_other)
         subjects.extend(sim_subjects)
         print('Sim {} dataset with length {}'.format(dataset, len(sim_subjects)))

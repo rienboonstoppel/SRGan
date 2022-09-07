@@ -42,25 +42,24 @@ def print_config(config, args):
 
 
 def save_to_nifti(img, header, fname, max_val, source):
-    size = 0.7
     if source == 'sim':
-        affine = np.array([[-size, 0, 0, 0],
-                           [0, -size, 0, 0],
+        affine = np.array([[-0.7, 0, 0, 0],
+                           [0, -0.7, 0, 0],
                            [0, 0, 1, 0],
                            [0, 0, 0, 1]])
-    elif source == 'mrbrains18':
-        affine = np.array([[size, 0, 0, 0],
-                           [0, size, 0, 0],
+    elif source == 'mrbrains':
+        affine = np.array([[0.9583, 0, 0, 0],
+                           [0, 0.9583, 0, 0],
                            [0, 0, 3, 0],
                            [0, 0, 0, 1]])
-    elif source == 'hcp' or source == 'hcp_gen':
-        affine = np.array([[size, 0, 0, 0],
-                           [0, size, 0, 0],
-                           [0, 0, size, 0],
+    elif source == 'hcp':
+        affine = np.array([[0.7, 0, 0, 0],
+                           [0, 0.7, 0, 0],
+                           [0, 0, 0.7, 0],
                            [0, 0, 0, 1]])
     elif source == 'oasis':
-        affine = np.array([[size, 0, 0, 0],
-                           [0, size, 0, 0],
+        affine = np.array([[-1, 0, 0, 0],
+                           [0, -1, 0, 0],
                            [0, 0, 1, 0],
                            [0, 0, 0, 1]])
     img = img.numpy()[0]
