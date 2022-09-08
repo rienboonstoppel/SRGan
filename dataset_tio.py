@@ -162,8 +162,8 @@ class HCPImage(Image):
     def __init__(self, number, root_dir='data', middle_slices=50, every_other=1, augment=False):
         super().__init__(middle_slices, every_other, augment)
         self.path = os.path.join(root_dir, 'brain_real_t1w_mri', 'HCP')
-        self.img_fname = "{:01d}_3T_T1w_MPR1_img".format(number)
-        self.msk_fname = "labels_{:01d}_3T_T1w_MPR1_img".format(number)
+        self.img_fname = "{:06d}_3T_T1w_MPR1_img".format(number)
+        self.msk_fname = "labels_{:06d}_3T_T1w_MPR1_img".format(number)
 
     def fnames(self) -> dict:
         lr_fname = path.join(self.path, 'LR', self.img_fname + ".nii.gz")
@@ -243,11 +243,12 @@ def HCP_data(dataset,
              nr_val_patients=10,
              nr_test_patients=10,
              ):
+    random.seed(21011998)
     path = root_dir + "/brain_real_t1w_mri/HCP/HR/"
     fnames = glob(path + "*.nii.gz")
     ids = sorted(list(map(int, [(fnames[i][-29:-23]) for i in range(len(fnames))])))
-    random.shuffle(ids)
     # print(ids)
+    random.shuffle(ids)
 
     if nr_train_patients + nr_val_patients + nr_test_patients > 50:
         raise ValueError("Total number of patients should be 50 or less")
@@ -256,7 +257,6 @@ def HCP_data(dataset,
         ids_split = ids[:nr_train_patients]
     elif dataset == 'validation':
         ids_split = ids[-nr_val_patients-nr_test_patients:-nr_test_patients]
-        print(ids_split)
     elif dataset == 'test':
         ids_split = ids[-nr_test_patients:]
     else:

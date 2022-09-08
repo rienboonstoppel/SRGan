@@ -1,6 +1,6 @@
 program: main.py
 method: grid
-project: sweep-trainmix
+project: sweep-trainmix-2
 metric:
   goal: maximize
   name: SSIM_mean

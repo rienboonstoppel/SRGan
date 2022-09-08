@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import torch
 import torchio as tio
 from trainer_org import LitTrainer as LitTrainer_org
@@ -32,8 +33,8 @@ device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
 # run_id = 62
 # ckpt_path = glob('log/sweep-2/*/*'+str(run_id)+'*')[0]
 
-run_ids = [1,2,3,4]
-ckpt_paths = [glob('log/sweep-2/*/*'+str(run_id)+'*')[0] for run_id in run_ids]
+run_ids = np.arange(2,15)
+ckpt_paths = [glob('log/sweep-2/*/*-sweep-'+str(run_id)+'-checkpoint-best.ckpt')[0] for run_id in run_ids]
 
 
 class AttrDict(dict):
@@ -146,7 +147,22 @@ def main(ckpt_paths):
         model.eval()
 
         for i in tqdm(range(len(grid_samplers))):
-            output_path = os.path.join('output/sweep-2', args.source + '_' + str(subjects_info[i]['id']))
+            if args.source == 'sim':
+                img_fname = "08-Apr-2022_Ernst_labels_{:06d}_3T_T1w_MPR1_img_act_1_contrast_1".format(subjects_info[i]['id'])
+            elif args.source == 'hcp':
+                img_fname = "{:06d}_3T_T1w_MPR1_img".format(subjects_info[i]['id'])
+            elif args.source == 'oasis':
+                img_fname = "OAS1_{:04d}_MR1_mpr_n4_anon_111_t88_masked_gfc".format(subjects_info[i]['id'])
+            elif args.source == 'mrbrains':
+                img_fname = "p{:01d}_reg_T1".format(subjects_info[i]['id'])
+            else:
+                raise ValueError("Dataset '{}' not implemented".format(args.source))
+
+            output_path = os.path.join('output/sweep-2',
+                                       args.source,
+                                       'hcp{:02d}_sim{:02d}'.format(model.hparams.config['nr_hcp_train'],
+                                                            model.hparams.config['nr_sim_train']),
+                                       'SR')
             os.makedirs(output_path, exist_ok=True)
 
             aggregator = tio.inference.GridAggregator(grid_samplers[i])  # , overlap_mode='average')
@@ -174,7 +190,8 @@ def main(ckpt_paths):
             save_to_nifti(img=sr['SR'],
                           header=subjects_info[i]['LR']['header'],
                           max_val=subjects_info[i]['LR']['scaling'],
-                          fname=os.path.join(output_path, 'SR_hcp{}_sim{}.nii.gz'.format(model.hparams.config['nr_hcp_train'],
+                          fname=os.path.join(output_path,
+                                             img_fname + '_SR_hcp{:02d}_sim{:02d}.nii.gz'.format(model.hparams.config['nr_hcp_train'],
                                                                                          model.hparams.config['nr_sim_train'])),
                           source=args.source,
                           )
