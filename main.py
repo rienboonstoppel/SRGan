@@ -40,8 +40,8 @@ default_config = {
     'edge_loss': 2,
     'netD_freq': 1,
     'data_resolution': '1mm_07mm',
-    'nr_hcp_train': 1,
-    'nr_sim_train': 1,
+    'nr_hcp_train': 30,
+    'nr_sim_train': 0,
     'patch_overlap': 0.5,
     'generator': 'ESRGAN'
 }

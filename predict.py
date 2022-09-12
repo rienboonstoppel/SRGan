@@ -33,7 +33,7 @@ device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
 # run_id = 62
 # ckpt_path = glob('log/sweep-2/*/*'+str(run_id)+'*')[0]
 
-run_ids = np.arange(15,26)
+run_ids = np.arange(1,43)
 ckpt_paths = [glob('log/sweep-2/*/*-sweep-'+str(run_id)+'-checkpoint-best.ckpt')[0] for run_id in run_ids]
 
 

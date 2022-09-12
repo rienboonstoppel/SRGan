@@ -47,12 +47,11 @@ def main():
                                 root_dir=data_path,
                                 middle_slices=args.middle_slices,
                                 every_other=args.every_other)
-        fname = '_3T_T1w_MPR1_img_SR_'
     else:
         raise ValueError("Dataset '{}' not implemented".format(args.source))
 
-    nr_hcp_train = [1, 2, 5, 10]
-    nr_sim_train = [1, 2, 5, 10]
+    nr_hcp_train = [1, 2, 5, 10, 20, 30]
+    nr_sim_train = [1, 2, 5, 10, 20, 30, 50]
 
     for i in tqdm(range(len(val_subjects)), desc='Adding SR images'):
         subject = val_subjects[i]
@@ -60,11 +59,14 @@ def main():
             for nr_sim in nr_sim_train:
                 folder = 'hcp{:02d}_sim{:02d}'.format(nr_hcp, nr_sim)
                 SR_path = os.path.join(args.root_dir, 'output', 'sweep-2', args.source, folder, 'SR')
-
-                _fname = '{:06d}'.format(subjects_info[i]['id']) + fname + 'hcp{:02d}_sim{:02d}.nii.gz'.format(nr_hcp,
-                                                                                                               nr_sim)
-                os.path.join(SR_path, _fname)
-                SR = nib.load(os.path.join(SR_path, _fname))
+                if args.source == 'sim':
+                    fname = '08-Apr-2022_Ernst_labels_{:06d}_3T_T1w_MPR1_img_act_1_contrast_1_SR_hcp{:02d}_sim{:02d}.nii.gz'.format(subjects_info[i]['id'],
+                                                                                          nr_hcp, nr_sim)
+                elif args.source == 'hcp':
+                    fname = '{:06d}_3T_T1w_MPR1_img_SR_hcp{:02d}_sim{:02d}.nii.gz'.format(subjects_info[i]['id'],
+                                                                                          nr_hcp, nr_sim)
+                os.path.join(SR_path, fname)
+                SR = nib.load(os.path.join(SR_path, fname))
                 SR_norm, _ = perc_norm(SR.get_fdata())
                 subject.add_image(tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(SR_norm, 0))),
                                   'SR_{}_{}'.format(nr_hcp, nr_sim))
