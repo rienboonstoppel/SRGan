@@ -24,7 +24,6 @@ class LitTrainer(pl.LightningModule):
         parser.add_argument('--middle_slices', type=int, default=100)
         parser.add_argument('--every_other', type=int, default=1)
         parser.add_argument('--sampler', type=str, default='label', choices=['grid', 'label'])
-
         return parent_parser
 
     def __init__(self,
@@ -109,7 +108,6 @@ class LitTrainer(pl.LightningModule):
                 return g_loss
 
             loss_pixel = self.criterion_pixel(imgs_sr, imgs_hr) if self.alpha_pixel != 0 else 0
-
             loss_edge = self.criterion_edge(imgs_sr, imgs_hr) if self.alpha_edge != 0 else 0
 
             if self.alpha_perceptual != 0:
@@ -179,7 +177,6 @@ class LitTrainer(pl.LightningModule):
             # ---------------------
             imgs_lr, imgs_hr = self.prepare_batch(batch)
             imgs_sr = self(imgs_lr)
-
             loss_pixel = self.criterion_pixel(imgs_sr, imgs_hr) if self.alpha_pixel != 0 else 0
             loss_edge = self.criterion_edge(imgs_sr, imgs_hr) if self.alpha_edge != 0 else 0
 
@@ -263,7 +260,6 @@ class LitTrainer(pl.LightningModule):
                  on_epoch=True, sync_dist=True, prog_bar=False, batch_size=self.batch_size)
         self.log('NCC_mean', metrics['NCC']['mean'], sync_dist=True, prog_bar=True)
 
-
         self.log('NRMSE', {'Mean': metrics['NRMSE']['mean'],
                            'Q1': metrics['NRMSE']['quartiles'][0],
                            'Median': metrics['NRMSE']['quartiles'][1],
@@ -285,10 +281,15 @@ class LitTrainer(pl.LightningModule):
                               nr_hcp=self.nr_hcp_train,
                               middle_slices=args.middle_slices,
                               every_other=args.every_other)
-        val_subjects = data(dataset='validation',
-                            root_dir=data_path,
-                            middle_slices=args.middle_slices,
-                            every_other=args.every_other)
+        # val_subjects = data(dataset='validation',
+        #                     root_dir=data_path,
+        #                     middle_slices=args.middle_slices,
+        #                     every_other=args.every_other)
+
+        val_subjects, _ = sim_data(dataset='validation',
+                                   middle_slices=args.middle_slices,
+                                   root_dir=data_path,
+                                   every_other=args.every_other)
 
         self.num_val_subjects = len(val_subjects)
 

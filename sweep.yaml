@@ -1,6 +1,6 @@
 program: main.py
 method: grid
-project: sweep-trainmix-2
+project: sweep-losses
 metric:
   goal: maximize
   name: SSIM_mean
@@ -15,12 +15,21 @@ parameters:
 #    distribution: uniform
 #    min: 0.01
 #    max: 10
-  nr_hcp_train:
+#  nr_hcp_train:
+#    distribution: categorical
+#    values: [1,2,5,10,20,30]
+#  nr_sim_train:
+#    distribution: categorical
+#    values: [1,2,5,10,20,30,50]
+  alpha_pixel:
     distribution: categorical
-    values: [1,2,5,10,20,30]
-  nr_sim_train:
+    values: [0.1, 0.5, 1]
+  alpha_edge:
     distribution: categorical
-    values: [1,2,5,10,20,30,50]
+    values: [0, 0.1, 0.5, 1]
+  alpha_perceptual:
+    distribution: categorical
+    values: [0, 0.1, 0.5, 1]
 
 command:
   - python
@@ -28,7 +37,7 @@ command:
   - --gpus=1
   - --log_every_n_steps=500
   - --max_epochs=25
-  - --gan
+#  - --gan
   - --num_sanity_val_steps=0
-  - --wandb_project=sweep-trainmix-2
+  - --wandb_project=sweep-losses
   - --no_checkpointing

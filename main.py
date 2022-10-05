@@ -11,7 +11,6 @@ import pytorch_lightning as pl
 from argparse import ArgumentParser
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.callbacks import ModelCheckpoint
-# from pytorch_lightning.callbacks import ModelPruning
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from datetime import timedelta
 from utils import print_config
@@ -31,8 +30,8 @@ default_config = {
     'learning_rate_G': 2e-5,
     'learning_rate_D': 2e-5,
     'patch_size': 64,
-    'alpha_edge': 0.3,
-    'alpha_pixel': 0.7,
+    'alpha_edge': 1,
+    'alpha_pixel': 1,
     'alpha_perceptual': 1,
     'alpha_adversarial': 0.1,
     'ragan': False,
@@ -40,8 +39,8 @@ default_config = {
     'edge_loss': 2,
     'netD_freq': 1,
     'data_resolution': '1mm_07mm',
-    'nr_hcp_train': 30,
-    'nr_sim_train': 0,
+    'nr_hcp_train': 0,
+    'nr_sim_train': 25,
     'patch_overlap': 0.5,
     'generator': 'ESRGAN'
 }
@@ -61,7 +60,7 @@ def main(default_config):
     parser.set_defaults(gan=False)
     parser.set_defaults(no_checkpointing=False)
 
-    log_folder = 'log/sweep-2'
+    log_folder = 'log/sweep-losses'
 
     # --precision=16 --gpus=1 --log_every_n_steps=50 --max_epochs=-1 --max_time="00:00:00:00"
     parser = pl.Trainer.add_argparse_args(parser)
