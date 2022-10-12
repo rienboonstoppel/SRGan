@@ -30,10 +30,10 @@ default_config = {
     'learning_rate_G': 2e-5,
     'learning_rate_D': 2e-5,
     'patch_size': 64,
-    'alpha_edge': 1,
     'alpha_pixel': 1,
+    'alpha_edge': 0,
     'alpha_perceptual': 1,
-    'alpha_adversarial': 0.1,
+    'alpha_adversarial': 0,
     'ragan': False,
     'gan_mode': 'vanilla',
     'edge_loss': 2,
@@ -60,7 +60,7 @@ def main(default_config):
     parser.set_defaults(gan=False)
     parser.set_defaults(no_checkpointing=False)
 
-    log_folder = 'log/sweep-losses'
+    log_folder = 'log/sweep-losses-hcp'
 
     # --precision=16 --gpus=1 --log_every_n_steps=50 --max_epochs=-1 --max_time="00:00:00:00"
     parser = pl.Trainer.add_argparse_args(parser)

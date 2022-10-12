@@ -33,9 +33,9 @@ device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
 # run_id = 62
 # ckpt_path = glob('log/sweep-2/*/*'+str(run_id)+'*')[0]
 
-# run_ids = np.arange(1,43)
-run_ids = [45,47]
-ckpt_paths = [glob('log/sweep-2/*/*-*-'+str(run_id)+'-checkpoint-best.ckpt')[0] for run_id in run_ids]
+# run_ids = np.arange(1,6)
+run_ids = [10]
+ckpt_paths = [glob('log/sweep-losses-hcp/*/*-*-'+str(run_id)+'-checkpoint-best.ckpt')[0] for run_id in run_ids]
 
 
 class AttrDict(dict):
@@ -141,8 +141,16 @@ def main(ckpt_paths):
                 netF=feature_extractor,
                 checkpoint_path=path,
             )
-        print('Checkpoint trained on {} hcp subjects and {} sim subjects'.format(model.hparams.config['nr_hcp_train'],
-                                                                                 model.hparams.config['nr_sim_train']))
+        # print('Checkpoint trained on {} hcp subjects and {} sim subjects'.format(model.hparams.config['nr_hcp_train'],
+        #                                                                          model.hparams.config['nr_sim_train']))
+
+        print('Checkpoint trained on {} hcp subjects, with alpha losses; pixel: {}, edge: {}, vgg: {}, gan: {}'.format(
+            model.hparams.config['nr_hcp_train'],
+            model.alpha_pixel,
+            model.alpha_edge,
+            model.alpha_perceptual,
+            model.hparams.config['alpha_adversarial'],
+        ))
 
         model.to(device)
         model.eval()
@@ -159,10 +167,14 @@ def main(ckpt_paths):
             else:
                 raise ValueError("Dataset '{}' not implemented".format(args.source))
 
-            output_path = os.path.join('output/baseline',
+            name = 'pixel{}_edge{}_vgg{}_gan{}'.format(model.alpha_pixel,
+                                                       model.alpha_edge,
+                                                       model.alpha_perceptual,
+                                                       model.hparams.config['alpha_adversarial']).replace('.', '')
+
+            output_path = os.path.join('output/sweep-losses-hcp',
                                        args.source,
-                                       'hcp{:02d}_sim{:02d}'.format(model.hparams.config['nr_hcp_train'],
-                                                            model.hparams.config['nr_sim_train']),
+                                       name,
                                        'SR')
             os.makedirs(output_path, exist_ok=True)
 
@@ -192,11 +204,9 @@ def main(ckpt_paths):
                           header=subjects_info[i]['LR']['header'],
                           max_val=subjects_info[i]['LR']['scaling'],
                           fname=os.path.join(output_path,
-                                             img_fname + '_SR_hcp{:02d}_sim{:02d}.nii.gz'.format(model.hparams.config['nr_hcp_train'],
-                                                                                         model.hparams.config['nr_sim_train'])),
+                                             img_fname + '_SR_' + name),
                           source=args.source,
                           )
-
 
 if __name__ == '__main__':
     main(ckpt_paths)
