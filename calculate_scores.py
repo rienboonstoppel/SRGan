@@ -50,15 +50,17 @@ def main():
     else:
         raise ValueError("Dataset '{}' not implemented".format(args.source))
 
-    nr_hcp_train = [1, 2, 5, 10, 20, 30]
-    nr_sim_train = [1, 2, 5, 10, 20, 30, 50]
+    # nr_hcp_train = [1, 2, 5, 10, 20, 30]
+    # nr_sim_train = [1, 2, 5, 10, 20, 30, 50]
+    nr_hcp_train = [0]
+    nr_sim_train = [50]
 
     for i in tqdm(range(len(val_subjects)), desc='Adding SR images'):
         subject = val_subjects[i]
         for nr_hcp in nr_hcp_train:
             for nr_sim in nr_sim_train:
                 folder = 'hcp{:02d}_sim{:02d}'.format(nr_hcp, nr_sim)
-                SR_path = os.path.join(args.root_dir, 'output', 'sweep-2', args.source, folder, 'SR')
+                SR_path = os.path.join(args.root_dir, 'output', 'baseline', args.source, folder, 'SR')
                 if args.source == 'sim':
                     fname = '08-Apr-2022_Ernst_labels_{:06d}_3T_T1w_MPR1_img_act_1_contrast_1_SR_hcp{:02d}_sim{:02d}.nii.gz'.format(subjects_info[i]['id'],
                                                                                           nr_hcp, nr_sim)
@@ -112,12 +114,12 @@ def main():
                 #     SSIM(HR, SR, gaussian_weights=True, sigma=1.5, use_sample_covariance=False, data_range=1.5))
                 # ncc_df[nr_hcp][nr_sim].append(NCC(HR, SR))
                 # nrmse_df[nr_hcp][nr_sim].append(NRMSE(HR, SR))
-    output_path = os.path.join(args.root_dir, 'output', 'sweep-2', args.source)
+    output_path = os.path.join(args.root_dir, 'output', 'baseline', args.source)
     # ssim_df.to_csv(os.path.join(output_path, 'ssim_df_baseline_hcp_new.csv'))
     # ncc_df.to_csv(os.path.join(output_path, 'ncc_df_baseline_hcp_new.csv'))
     # nrmse_df.to_csv(os.path.join(output_path, 'nrmse_df_baseline_hcp_new.csv'))
-    flip_mean_df.to_csv(os.path.join(output_path, 'flip_mean.csv'))
-    flip_max_df.to_csv(os.path.join(output_path, 'flip_max.csv'))
+    flip_mean_df.to_csv(os.path.join(output_path, 'flip_df_mean_baseline_sim.csv'))
+    flip_max_df.to_csv(os.path.join(output_path, 'flip_df_max_baseline_sim.csv'))
 
 if __name__ == '__main__':
     main()

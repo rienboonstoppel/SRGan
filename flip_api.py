@@ -512,8 +512,8 @@ def compute_ldrflip(reference, test, pixels_per_degree=(0.7 * 3840 / 0.7) * np.p
 
     # --- Final error ---
     error_map = np.power(deltaE_c, 1 - deltaE_f)
-    return np.mean(error_map), np.max(error_map)
-    # return preprocessed_reference, reference_y, np.power(deltaE_c, 1 - deltaE_f), deltaE_c, deltaE_f
+    # return np.mean(error_map), np.max(error_map)
+    return preprocessed_reference, reference_y, np.power(deltaE_c, 1 - deltaE_f), deltaE_c, deltaE_f
 
 
 ##################################################################################################################################################################################################################################################
