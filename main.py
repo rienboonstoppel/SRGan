@@ -30,21 +30,21 @@ default_config = {
     'learning_rate_G': 2e-5,
     'learning_rate_D': 2e-5,
     'patch_size': 64,
-    'alpha_pixel': 1,
-    'alpha_edge': 0,
+    'alpha_pixel': 0.7,
+    'alpha_edge': 0.3,
     'alpha_perceptual': 1,
-    'alpha_adversarial': 0,
-    'ragan': False,
-    'gan_mode': 'vanilla',
+    'alpha_adversarial': 0.1,
+    'ragan': True,
+    'gan_mode': 'wgan',
     'edge_loss': 2,
     'netD_freq': 1,
     'data_resolution': '1mm_07mm',
-    'nr_hcp_train': 0,
-    'nr_sim_train': 25,
+    'nr_hcp_train': 30,
+    'nr_sim_train': 30,
     'patch_overlap': 0.5,
-    'generator': 'ESRGAN'
+    'generator': 'ESRGAN',
+    'num_res_blocks': 1,
 }
-
 
 def main(default_config):
     pl.seed_everything(21011998)
@@ -60,7 +60,7 @@ def main(default_config):
     parser.set_defaults(gan=False)
     parser.set_defaults(no_checkpointing=False)
 
-    log_folder = 'log/sweep-losses-hcp'
+    log_folder = 'log/data-final'
 
     # --precision=16 --gpus=1 --log_every_n_steps=50 --max_epochs=-1 --max_time="00:00:00:00"
     parser = pl.Trainer.add_argparse_args(parser)
@@ -90,9 +90,9 @@ def main(default_config):
     # print_config(config, args)
 
     if config.generator == 'ESRGAN':
-        generator = generator_ESRGAN(channels=1, filters=config.num_filters, num_res_blocks=1)
+        generator = generator_ESRGAN(channels=1, filters=config.num_filters, num_res_blocks=config.num_res_blocks)
     elif config.generator == 'RRDB':
-        generator = generator_RRDB(channels=1, filters=config.num_filters, num_res_blocks=1)
+        generator = generator_RRDB(channels=1, filters=config.num_filters, num_res_blocks=config.num_res_blocks)
     elif config.generator == 'DeepUResnet':
         generator = generator_DeepUResnet(nrfilters=config.num_filters)
     elif config.generator == 'FSRCNN':

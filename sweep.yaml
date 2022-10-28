@@ -1,6 +1,6 @@
 program: main.py
 method: grid
-project: sweep-losses
+project: sweep-archs
 metric:
   goal: maximize
   name: SSIM_mean
@@ -21,23 +21,31 @@ parameters:
 #  nr_sim_train:
 #    distribution: categorical
 #    values: [1,2,5,10,20,30,50]
-  alpha_pixel:
+#  alpha_pixel:
+#    distribution: categorical
+#    values: [0.1, 0.5, 1]
+#  alpha_edge:
+#    distribution: categorical
+#    values: [0, 0.1, 0.5, 1]
+#  alpha_perceptual:
+#    distribution: categorical
+#    values: [0, 0.1, 0.5, 1]
+#  gan_mode:
+#    distribution: categorical
+#    values: ['vanilla','lsgan','wgan']
+#  ragan:
+#    distribution: categorical
+#    values: [False,True]
+  generator:
     distribution: categorical
-    values: [0.1, 0.5, 1]
-  alpha_edge:
-    distribution: categorical
-    values: [0, 0.1, 0.5, 1]
-  alpha_perceptual:
-    distribution: categorical
-    values: [0, 0.1, 0.5, 1]
-
+    values: ['RRDB', 'DeepUResnet', 'FSRCNN']
 command:
   - python
   - ${program}
   - --gpus=1
   - --log_every_n_steps=500
   - --max_epochs=25
-#  - --gan
+  - --gan
   - --num_sanity_val_steps=0
-  - --wandb_project=sweep-losses
+  - --wandb_project=sweep-archs
   - --no_checkpointing

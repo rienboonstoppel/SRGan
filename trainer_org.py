@@ -195,7 +195,7 @@ class LitTrainer(pl.LightningModule):
                               middle_slices=args.middle_slices,
                               every_other=args.every_other)
 
-        val_subjects, _ = HCP_data(dataset='validation',
+        val_subjects, _ = sim_data(dataset='validation',
                                    middle_slices=args.middle_slices,
                                    root_dir=data_path,
                                    every_other=args.every_other)

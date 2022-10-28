@@ -281,15 +281,15 @@ class LitTrainer(pl.LightningModule):
                               nr_hcp=self.nr_hcp_train,
                               middle_slices=args.middle_slices,
                               every_other=args.every_other)
-        # val_subjects = data(dataset='validation',
-        #                     root_dir=data_path,
-        #                     middle_slices=args.middle_slices,
-        #                     every_other=args.every_other)
+        val_subjects = data(dataset='validation',
+                            root_dir=data_path,
+                            middle_slices=args.middle_slices,
+                            every_other=args.every_other)
 
-        val_subjects, _ = sim_data(dataset='validation',
-                                   middle_slices=args.middle_slices,
-                                   root_dir=data_path,
-                                   every_other=args.every_other)
+        # val_subjects, _ = HCP_data(dataset='validation',
+        #                            middle_slices=args.middle_slices,
+        #                            root_dir=data_path,
+        #                            every_other=args.every_other)
 
         self.num_val_subjects = len(val_subjects)
 

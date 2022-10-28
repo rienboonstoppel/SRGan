@@ -33,10 +33,9 @@ device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
 # run_id = 62
 # ckpt_path = glob('log/sweep-2/*/*'+str(run_id)+'*')[0]
 
-# run_ids = np.arange(1,6)
-run_ids = [10]
-ckpt_paths = [glob('log/sweep-losses-hcp/*/*-*-'+str(run_id)+'-checkpoint-best.ckpt')[0] for run_id in run_ids]
-
+run_ids = np.arange(1,4)
+# run_ids = [12]
+ckpt_paths = [glob('log/data-final/*/*-*-'+str(run_id)+'-checkpoint-best.ckpt')[0] for run_id in run_ids]
 
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
@@ -83,23 +82,25 @@ def main(ckpt_paths):
 
     args.middle_slices = None
 
+    dataset = 'test'
+
     if args.source == 'sim':
-        val_subjects, subjects_info = sim_data(dataset='validation',
+        val_subjects, subjects_info = sim_data(dataset=dataset,
                                 root_dir=data_path,
                                 middle_slices=args.middle_slices,
                                 every_other=args.every_other)
     elif args.source == 'hcp':
-        val_subjects, subjects_info = HCP_data(dataset='validation',
+        val_subjects, subjects_info = HCP_data(dataset=dataset,
                                 root_dir=data_path,
                                 middle_slices=args.middle_slices,
                                 every_other=args.every_other)
     elif args.source == 'oasis':
-        val_subjects, subjects_info = OASIS_data(dataset='validation',
+        val_subjects, subjects_info = OASIS_data(dataset=dataset,
                                   root_dir=data_path,
                                   middle_slices=args.middle_slices,
                                   every_other=args.every_other)
     elif args.source == 'mrbrains':
-        val_subjects, subjects_info = MRBrainS18_data(dataset='validation',
+        val_subjects, subjects_info = MRBrainS18_data(dataset=dataset,
                                        root_dir=data_path,
                                        middle_slices=args.middle_slices,
                                        every_other=args.every_other)
@@ -141,16 +142,28 @@ def main(ckpt_paths):
                 netF=feature_extractor,
                 checkpoint_path=path,
             )
-        # print('Checkpoint trained on {} hcp subjects and {} sim subjects'.format(model.hparams.config['nr_hcp_train'],
-        #                                                                          model.hparams.config['nr_sim_train']))
+        print('Checkpoint trained on {} hcp subjects and {} sim subjects'.format(model.hparams.config['nr_hcp_train'],
+                                                                                 model.hparams.config['nr_sim_train']))
 
-        print('Checkpoint trained on {} hcp subjects, with alpha losses; pixel: {}, edge: {}, vgg: {}, gan: {}'.format(
-            model.hparams.config['nr_hcp_train'],
-            model.alpha_pixel,
-            model.alpha_edge,
-            model.alpha_perceptual,
-            model.hparams.config['alpha_adversarial'],
-        ))
+        # print('Checkpoint trained on {} hcp subjects, with alpha losses; pixel: {}, edge: {}, vgg: {}, gan: {}'.format(
+        #     model.hparams.config['nr_hcp_train'],
+        #     model.alpha_pixel,
+        #     model.alpha_edge,
+        #     model.alpha_perceptual,
+        #     model.hparams.config['alpha_adversarial'],
+        # ))
+
+        # print('Checkpoint trained on {} hcp and {} sim subjects, with gan_mode {} and ragan {}'.format(
+        #     model.hparams.config['nr_hcp_train'],
+        #     model.hparams.config['nr_sim_train'],
+        #     model.hparams.config['gan_mode'],
+        #     model.hparams.config['ragan']))
+
+        # print('Checkpoint trained on {} hcp and {} sim subjects, with generator {}'.format(
+        #     model.hparams.config['nr_hcp_train'],
+        #     model.hparams.config['nr_sim_train'],
+        #     args.generator))
+
 
         model.to(device)
         model.eval()
@@ -167,15 +180,23 @@ def main(ckpt_paths):
             else:
                 raise ValueError("Dataset '{}' not implemented".format(args.source))
 
-            name = 'pixel{}_edge{}_vgg{}_gan{}'.format(model.alpha_pixel,
-                                                       model.alpha_edge,
-                                                       model.alpha_perceptual,
-                                                       model.hparams.config['alpha_adversarial']).replace('.', '')
+            name = 'sim={}_hcp={}'.format(model.nr_sim_train, model.nr_hcp_train)
 
-            output_path = os.path.join('output/sweep-losses-hcp',
+            # name = 'px{}_edge{}_vgg{}_gan{}'.format(model.alpha_pixel,
+            #                                         model.alpha_edge,
+            #                                         model.alpha_perceptual,
+            #                                         model.hparams.config['alpha_adversarial']).replace('.', '')
+
+            # name = 'mode={}_ragan={}'.format(
+            #     model.hparams.config['gan_mode'],
+            #     model.hparams.config['ragan'])
+
+            # name = 'generator={}3'.format(args.generator)
+
+            output_path = os.path.join('output/data-final',
                                        args.source,
                                        name,
-                                       'SR')
+                                       dataset)
             os.makedirs(output_path, exist_ok=True)
 
             aggregator = tio.inference.GridAggregator(grid_samplers[i])  # , overlap_mode='average')
@@ -204,7 +225,7 @@ def main(ckpt_paths):
                           header=subjects_info[i]['LR']['header'],
                           max_val=subjects_info[i]['LR']['scaling'],
                           fname=os.path.join(output_path,
-                                             img_fname + '_SR_' + name),
+                                             img_fname + '_SR_' + name + '.nii.gz'),
                           source=args.source,
                           )
 
