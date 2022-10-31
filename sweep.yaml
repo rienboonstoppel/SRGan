@@ -1,6 +1,6 @@
 program: main.py
 method: grid
-project: sweep-archs
+project: sweep-data-4
 metric:
   goal: maximize
   name: SSIM_mean
@@ -15,12 +15,12 @@ parameters:
 #    distribution: uniform
 #    min: 0.01
 #    max: 10
-#  nr_hcp_train:
-#    distribution: categorical
-#    values: [1,2,5,10,20,30]
-#  nr_sim_train:
-#    distribution: categorical
-#    values: [1,2,5,10,20,30,50]
+  nr_hcp_train:
+    distribution: categorical
+    values: [1,2,3,4,5,10,20,30]
+  nr_sim_train:
+    distribution: categorical
+    values: [1,2,3,4,5,10,20,30]
 #  alpha_pixel:
 #    distribution: categorical
 #    values: [0.1, 0.5, 1]
@@ -36,9 +36,9 @@ parameters:
 #  ragan:
 #    distribution: categorical
 #    values: [False,True]
-  generator:
-    distribution: categorical
-    values: ['RRDB', 'DeepUResnet', 'FSRCNN']
+#  generator:
+#    distribution: categorical
+#    values: ['RRDB', 'DeepUResnet', 'FSRCNN']
 command:
   - python
   - ${program}
@@ -47,5 +47,5 @@ command:
   - --max_epochs=25
   - --gan
   - --num_sanity_val_steps=0
-  - --wandb_project=sweep-archs
+  - --wandb_project=sweep-data-4
   - --no_checkpointing

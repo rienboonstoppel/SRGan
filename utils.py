@@ -189,8 +189,48 @@ def imgs_cat(imgs_lr, imgs_hr, imgs_sr):
     return img_grid
 
 
+# def val_metrics(output_data, HR_aggregator, SR_aggregator, std, post_proc_info):
+#     metrics = ['NCC', 'SSIM', 'NRMSE']
+#     scores = {key: [] for key in metrics}
+#     # HR_aggs = []
+#     SR_aggs = []
+#     for i in range(len(output_data)):
+#         for j in range(len(output_data[i])):
+#             imgs_hr, imgs_sr, locations = output_data[i][j]
+#             HR_aggregator.add_batch(imgs_hr.unsqueeze(4), locations)
+#             SR_aggregator.add_batch(imgs_sr.unsqueeze(4), locations)
+#
+#         HR_agg = HR_aggregator.get_output_tensor()
+#         SR_agg = SR_aggregator.get_output_tensor()
+#         # HR_aggs.append(HR_agg*self.args.std)
+#         SR_aggs.append(SR_agg * std)
+#         bg_idx, brain_idx = post_proc_info[i]
+#         HR_agg = post_proc(HR_agg, bg_idx, brain_idx) * std
+#         SR_agg = post_proc(SR_agg, bg_idx, brain_idx) * std
+#
+#         HR_agg = HR_agg - np.mean(HR_agg)
+#         SR_agg = SR_agg - np.mean(SR_agg)
+#         scores['SSIM'].append(SSIM(HR_agg, SR_agg, gaussian_weights=True, sigma=1.5, use_sample_covariance=False))
+#         scores['NCC'].append(NCC(HR_agg, SR_agg))
+#         scores['NRMSE'].append(NRMSE(HR_agg, SR_agg))
+#
+#     return SR_aggs, {
+#         'SSIM': {
+#             'mean': np.mean(scores['SSIM']),
+#             'quartiles': np.percentile(scores['SSIM'], [25, 50, 75]),
+#         },
+#         'NCC': {
+#             'mean': np.mean(scores['NCC']),
+#             'quartiles': np.percentile(scores['NCC'], [25, 50, 75]),
+#         },
+#         'NRMSE': {
+#             'mean': np.mean(scores['NRMSE']),
+#             'quartiles': np.percentile(scores['NRMSE'], [25, 50, 75]),
+#         }
+#     }
+
 def val_metrics(output_data, HR_aggregator, SR_aggregator, std, post_proc_info):
-    metrics = ['NCC', 'SSIM', 'NRMSE']
+    metrics = ['SSIM', 'NCC']
     scores = {key: [] for key in metrics}
     # HR_aggs = []
     SR_aggs = []
@@ -210,9 +250,9 @@ def val_metrics(output_data, HR_aggregator, SR_aggregator, std, post_proc_info):
 
         HR_agg = HR_agg - np.mean(HR_agg)
         SR_agg = SR_agg - np.mean(SR_agg)
-        scores['SSIM'].append(SSIM(HR_agg, SR_agg, gaussian_weights=True, sigma=1.5, use_sample_covariance=False))
+        scores['SSIM'].append(SSIM(HR_agg, SR_agg, gaussian_weights=True, sigma=1.5, use_sample_covariance=False, data_range=1.5))
         scores['NCC'].append(NCC(HR_agg, SR_agg))
-        scores['NRMSE'].append(NRMSE(HR_agg, SR_agg))
+        # scores['NRMSE'].append(NRMSE(HR_agg, SR_agg))
 
     return SR_aggs, {
         'SSIM': {
@@ -223,11 +263,12 @@ def val_metrics(output_data, HR_aggregator, SR_aggregator, std, post_proc_info):
             'mean': np.mean(scores['NCC']),
             'quartiles': np.percentile(scores['NCC'], [25, 50, 75]),
         },
-        'NRMSE': {
-            'mean': np.mean(scores['NRMSE']),
-            'quartiles': np.percentile(scores['NRMSE'], [25, 50, 75]),
-        }
+        # 'NRMSE': {
+        #     'mean': np.mean(scores['NRMSE']),
+        #     'quartiles': np.percentile(scores['NRMSE'], [25, 50, 75]),
+        # }
     }
+
 
 
 def get_mean_and_std(dataloader):

@@ -58,40 +58,43 @@ def main():
     # nr_hcp_train = [30]
     # nr_sim_train = [30]
 
-    # dim0 = [30] #nr_hcp_train
-    # dim1 = [30] #nr_sim_train
+    dim0 = [1,2,3,4,5,10,20,30] #nr_sim_train
+    dim1 = [1,2,3,4,5,10,20,30] #nr_hcp_train
 
-    dim0 = [0]
-    dim1 = [0]
+    # dim0 = [0]
+    # dim1 = [0]
 
     # dim0 = [0, 1] #perceptual
     # dim1 = [0, 0.1] #adversarial
     #
     #
-    exp = 'losses-final'
+    exp = 'sweep-data'
+    name = 'sim={}_hcp={}'
     # name = 'px07_edge03_vgg{}_gan{}'
     #
-    # for i in tqdm(range(len(val_subjects)), desc='Adding SR images'):
-    #     subject = val_subjects[i]
-    #     for x in dim0:
-    #         for y in dim1:
-    #             folder = name.format(x, y).replace('.', '')
-    #             SR_path = os.path.join(args.root_dir, 'output', exp, args.source, folder, dataset)
-    #             if args.source == 'sim':
-    #                 fname = '08-Apr-2022_Ernst_labels_{:06d}_3T_T1w_MPR1_img_act_1_contrast_1_SR_'.format(subjects_info[i]['id'])+folder+'.nii.gz'
-    #             elif args.source == 'hcp':
-    #                 fname = '{:06d}_3T_T1w_MPR1_img_SR_'.format(subjects_info[i]['id'])+folder+'.nii.gz'
-    #             os.path.join(SR_path, fname)
-    #             SR = nib.load(os.path.join(SR_path, fname))
-    #             SR_norm, _ = perc_norm(SR.get_fdata())
-    #             subject.add_image(tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(SR_norm, 0))),
-    #                               'SR_{}_{}'.format(x, y).replace('.', ''))
+    for i in tqdm(range(len(val_subjects)), desc='Adding SR images'):
+        subject = val_subjects[i]
+        for x in dim0:
+            for y in dim1:
+                if x != 0 or y != 0:
+                    folder = name.format(x, y).replace('.', '')
+                    SR_path = os.path.join(args.root_dir, 'output', exp, args.source, folder, dataset)
+                    if args.source == 'sim':
+                        fname = '08-Apr-2022_Ernst_labels_{:06d}_3T_T1w_MPR1_img_act_1_contrast_1_SR_'.format(subjects_info[i]['id'])+folder+'.nii.gz'
+                    elif args.source == 'hcp':
+                        fname = '{:06d}_3T_T1w_MPR1_img_SR_'.format(subjects_info[i]['id'])+folder+'.nii.gz'
+                    os.path.join(SR_path, fname)
+                    SR = nib.load(os.path.join(SR_path, fname))
+                    SR_norm, _ = perc_norm(SR.get_fdata())
+                    subject.add_image(tio.ScalarImage(tensor=torch.from_numpy(np.expand_dims(SR_norm, 0))),
+                                      'SR_{}_{}'.format(x, y).replace('.', ''))
+
 
     ssim_df = pd.DataFrame(columns=dim0, index=dim1)
     ssim_df = ssim_df.apply(lambda s: s.fillna({i: [] for i in ssim_df.index}))
 
-    ncc_df = pd.DataFrame(columns=dim0, index=dim1)
-    ncc_df = ncc_df.apply(lambda s: s.fillna({i: [] for i in ncc_df.index}))
+    # ncc_df = pd.DataFrame(columns=dim0, index=dim1)
+    # ncc_df = ncc_df.apply(lambda s: s.fillna({i: [] for i in ncc_df.index}))
 
     nrmse_df = pd.DataFrame(columns=dim0, index=dim1)
     nrmse_df = nrmse_df.apply(lambda s: s.fillna({i: [] for i in nrmse_df.index}))
@@ -116,30 +119,31 @@ def main():
                        bg_idx=bg_idx,
                        crop_coords=crop_coords)
         # reference = np.repeat(np.expand_dims(HR[:, :, 100], 0), 3, 0)
-        LR = post_proc(subject['LR'],
-                       bg_idx=bg_idx,
-                       crop_coords=crop_coords)
+        # LR = post_proc(subject['LR'],
+        #                bg_idx=bg_idx,
+        #                crop_coords=crop_coords)
 
         for x in dim0:
             for y in dim1:
-                # SR = post_proc(img=subject['SR_{}_{}'.format(x, y).replace('.', '')],
-                #                bg_idx=bg_idx,
-                #                crop_coords=crop_coords)
+                if x != 0 or y != 0:
+                    SR = post_proc(img=subject['SR_{}_{}'.format(x, y).replace('.', '')],
+                                   bg_idx=bg_idx,
+                                   crop_coords=crop_coords)
 
-                # test = np.repeat(np.expand_dims(SR[:, :, 100], 0), 3, 0)
-                # flip_mean, flip_max = flip(reference, test)
-                # flip_mean_df[x][y].append(flip_mean)
-                # flip_max_df[x][y].append(flip_max)
-                ssim_df[x][y].append(
-                    SSIM(HR, LR, gaussian_weights=True, sigma=1.5, use_sample_covariance=False, data_range=1.5))
-                ncc_df[x][y].append(NCC(HR, LR))
-                nrmse_df[x][y].append(NRMSE(HR, LR))
-                psnr_df[x][y].append(PSNR(HR, LR, data_range=1.5))
+                    # test = np.repeat(np.expand_dims(SR[:, :, 100], 0), 3, 0)
+                    # flip_mean, flip_max = flip(reference, test)
+                    # flip_mean_df[x][y].append(flip_mean)
+                    # flip_max_df[x][y].append(flip_max)
+                    ssim_df[x][y].append(
+                        SSIM(HR, SR, gaussian_weights=True, sigma=1.5, use_sample_covariance=False, data_range=1.5))
+                    # ncc_df[x][y].append(NCC(HR, SR))
+                    nrmse_df[x][y].append(NRMSE(HR, SR))
+                    psnr_df[x][y].append(PSNR(HR, SR, data_range=1.5))
     output_path = os.path.join(args.root_dir, 'output', exp, args.source)
-    ssim_df.to_csv(os.path.join(output_path, 'ssim_df_LR.csv'))
-    ncc_df.to_csv(os.path.join(output_path, 'ncc_df_LR.csv'))
-    nrmse_df.to_csv(os.path.join(output_path, 'nrmse_df_LR.csv'))
-    psnr_df.to_csv(os.path.join(output_path, 'psnr_df_LR.csv'))
+    ssim_df.to_csv(os.path.join(output_path, 'ssim_df.csv'))
+    # ncc_df.to_csv(os.path.join(output_path, 'ncc_df.csv'))
+    nrmse_df.to_csv(os.path.join(output_path, 'nrmse_df.csv'))
+    psnr_df.to_csv(os.path.join(output_path, 'psnr_df.csv'))
     # flip_mean_df.to_csv(os.path.join(output_path, 'flip_df_mean_baseline_sim.csv'))
     # flip_max_df.to_csv(os.path.join(output_path, 'flip_df_max_baseline_sim.csv'))
 

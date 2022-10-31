@@ -33,9 +33,9 @@ device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
 # run_id = 62
 # ckpt_path = glob('log/sweep-2/*/*'+str(run_id)+'*')[0]
 
-run_ids = np.arange(1,4)
+run_ids = np.arange(61,65)
 # run_ids = [12]
-ckpt_paths = [glob('log/data-final/*/*-*-'+str(run_id)+'-checkpoint-best.ckpt')[0] for run_id in run_ids]
+ckpt_paths = [glob('log/sweep-data-4/*/*-*-'+str(run_id)+'-checkpoint-best.ckpt')[0] for run_id in run_ids]
 
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
@@ -193,7 +193,7 @@ def main(ckpt_paths):
 
             # name = 'generator={}3'.format(args.generator)
 
-            output_path = os.path.join('output/data-final',
+            output_path = os.path.join('output/sweep-data',
                                        args.source,
                                        name,
                                        dataset)

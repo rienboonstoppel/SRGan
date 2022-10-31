@@ -127,18 +127,19 @@ class LitTrainer(pl.LightningModule):
             # Adversarial loss
             loss_adv = self.criterion_GAN(pred_fake, True)
             # Calculate gradient penalty
-            # gradient_penalty = self.gradient_penalty(imgs_hr, imgs_sr)
+            gradient_penalty = self.gradient_penalty(imgs_hr, imgs_sr)
 
             g_loss = self.alpha_edge * loss_edge + \
                      self.alpha_pixel * loss_pixel + \
                      self.alpha_adv * loss_adv + \
-                     self.alpha_perceptual * loss_perceptual
+                     self.alpha_perceptual * loss_perceptual + \
+                     self.alpha_perceptual * gradient_penalty
 
             self.log('Generator train losses', {'edge': loss_edge,
                                                 'pixel': loss_pixel,
                                                 'perceptual': loss_perceptual,
                                                 'adversarial': loss_adv,
-                                                # 'gradient_penalty': gradient_penalty,
+                                                'gradient_penalty': gradient_penalty,
                                                 },
                      on_step=True, on_epoch=False, sync_dist=True, prog_bar=False, batch_size=self.batch_size)
 
@@ -259,13 +260,13 @@ class LitTrainer(pl.LightningModule):
                          },
                  on_epoch=True, sync_dist=True, prog_bar=False, batch_size=self.batch_size)
         self.log('NCC_mean', metrics['NCC']['mean'], sync_dist=True, prog_bar=True)
-
-        self.log('NRMSE', {'Mean': metrics['NRMSE']['mean'],
-                           'Q1': metrics['NRMSE']['quartiles'][0],
-                           'Median': metrics['NRMSE']['quartiles'][1],
-                           'Q3': metrics['NRMSE']['quartiles'][2],
-                           },
-                 on_epoch=True, sync_dist=True, prog_bar=False, batch_size=self.batch_size)
+        #
+        # self.log('NRMSE', {'Mean': metrics['NRMSE']['mean'],
+        #                    'Q1': metrics['NRMSE']['quartiles'][0],
+        #                    'Median': metrics['NRMSE']['quartiles'][1],
+        #                    'Q3': metrics['NRMSE']['quartiles'][2],
+        #                    },
+        #          on_epoch=True, sync_dist=True, prog_bar=False, batch_size=self.batch_size)
 
         middle = int(SR_aggs[0].shape[3] / 2)
         grid = torch.stack([SR_aggs[i][:, :, :, middle].squeeze() for i in range(len(SR_aggs))], dim=0).unsqueeze(1)
