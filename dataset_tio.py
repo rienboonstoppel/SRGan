@@ -41,7 +41,7 @@ def augment_hcp(img3d):
 
     ### simple augments
     # unsharp masking
-    # img3d_aug = img3d + .5 * (img3d - filters.gaussian(img3d, sigma=(1,1,0), preserve_range=True))
+    img3d_aug = img3d + .5 * (img3d - filters.gaussian(img3d, sigma=(1,1,0), preserve_range=True))
 
     # gamma = 1.5
     # img3d_aug = exposure.adjust_gamma(img3d, gamma=gamma, gain=1)
@@ -279,7 +279,8 @@ def HCP_data(dataset,
 def MRBrainS18_data(dataset,
                     root_dir='data',
                     middle_slices=50,
-                    every_other=1):
+                    every_other=1,
+                    augment=False):
     path = root_dir + "/brain_real_t1w_mri/MRBrainS18/GT/"
     fnames = glob(path + "*.nii.gz")
     ids = sorted(list(map(int, [(fnames[i][-15:-14]) for i in range(len(fnames))])))
@@ -296,7 +297,7 @@ def MRBrainS18_data(dataset,
     infos = []
     print('Loading MRBrainS18 dataset...')
     for num in ids_split:
-        data = MRBrainS18Image(num, root_dir=root_dir, middle_slices=middle_slices, every_other=every_other)
+        data = MRBrainS18Image(num, root_dir=root_dir, middle_slices=middle_slices, every_other=every_other, augment=augment)
         subjects.append(data.subject())
         info = data.info()
         info['id'] = num
@@ -307,7 +308,8 @@ def MRBrainS18_data(dataset,
 def OASIS_data(dataset,
                root_dir='data',
                middle_slices=50,
-               every_other=1):
+               every_other=1,
+               augment=False):
     path = root_dir + "/brain_real_t1w_mri/OASIS/LR/"
     fnames = glob(path + "*.nii.gz")
     ids = sorted(list(map(int, [(fnames[i][-46:-42]) for i in range(len(fnames))])))
@@ -324,7 +326,7 @@ def OASIS_data(dataset,
     infos = []
     print('Loading OASIS dataset...')
     for num in ids_split:
-        data = OASISImage(num, root_dir=root_dir, middle_slices=middle_slices, every_other=every_other)
+        data = OASISImage(num, root_dir=root_dir, middle_slices=middle_slices, every_other=every_other, augment=augment)
         subjects.append(data.subject())
         info = data.info()
         info['id'] = num

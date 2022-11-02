@@ -8,6 +8,8 @@ from skimage.metrics import normalized_root_mse as NRMSE
 import torch
 import torchio as tio
 import wandb
+from skimage import filters
+
 
 def print_config(config, args):
     print('Starting a run with config:')
@@ -65,6 +67,33 @@ def save_to_nifti(img, header, fname, max_val, source):
     img = img.numpy()[0]
     img *= max_val
     img_nifti = nib.Nifti1Image(img, affine=affine, header=header)
+    nib.save(img_nifti, fname)
+
+def save_to_nifti_pp(img, header, fname, max_val, source):
+    if source == 'sim':
+        affine = np.array([[-0.7, 0, 0, 0],
+                           [0, -0.7, 0, 0],
+                           [0, 0, 1, 0],
+                           [0, 0, 0, 1]])
+    elif source == 'mrbrains':
+        affine = np.array([[0.9583, 0, 0, 0],
+                           [0, 0.9583, 0, 0],
+                           [0, 0, 3, 0],
+                           [0, 0, 0, 1]])
+    elif source == 'hcp':
+        affine = np.array([[0.7, 0, 0, 0],
+                           [0, 0.7, 0, 0],
+                           [0, 0, 0.7, 0],
+                           [0, 0, 0, 1]])
+    elif source == 'oasis':
+        affine = np.array([[-1, 0, 0, 0],
+                           [0, -1, 0, 0],
+                           [0, 0, 1, 0],
+                           [0, 0, 0, 1]])
+    img = img.numpy()[0]
+    img_aug = img + .5 * (img - filters.gaussian(img, sigma=(1, 1, 0), preserve_range=True))
+    img_aug *= max_val
+    img_nifti = nib.Nifti1Image(img_aug, affine=affine, header=header)
     nib.save(img_nifti, fname)
 
 

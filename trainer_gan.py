@@ -126,20 +126,16 @@ class LitTrainer(pl.LightningModule):
 
             # Adversarial loss
             loss_adv = self.criterion_GAN(pred_fake, True)
-            # Calculate gradient penalty
-            gradient_penalty = self.gradient_penalty(imgs_hr, imgs_sr)
 
             g_loss = self.alpha_edge * loss_edge + \
                      self.alpha_pixel * loss_pixel + \
                      self.alpha_adv * loss_adv + \
-                     self.alpha_perceptual * loss_perceptual + \
-                     self.alpha_perceptual * gradient_penalty
+                     self.alpha_perceptual * loss_perceptual
 
             self.log('Generator train losses', {'edge': loss_edge,
                                                 'pixel': loss_pixel,
                                                 'perceptual': loss_perceptual,
                                                 'adversarial': loss_adv,
-                                                'gradient_penalty': gradient_penalty,
                                                 },
                      on_step=True, on_epoch=False, sync_dist=True, prog_bar=False, batch_size=self.batch_size)
 
@@ -164,7 +160,10 @@ class LitTrainer(pl.LightningModule):
             loss_real = self.criterion_GAN(pred_real, True)
             loss_fake = self.criterion_GAN(pred_fake, False)
 
-            d_loss = (loss_real + loss_fake) / 2
+            # Calculate gradient penalty
+            gradient_penalty = self.gradient_penalty(imgs_hr, imgs_sr)
+
+            d_loss = ((loss_real + loss_fake) / 2) + gradient_penalty
 
             self.log('Discriminator train', {'loss': d_loss},
                      on_step=False, on_epoch=True, sync_dist=True, batch_size=self.batch_size)
@@ -198,7 +197,7 @@ class LitTrainer(pl.LightningModule):
                                        pred_fake - pred_real.mean(0, keepdim=True)
 
             # Adversarial loss
-            loss_adv = self.criterion_GAN(pred_fake, True)  # Gradient Penalty cannot be calculated during validation
+            loss_adv = self.criterion_GAN(pred_fake, True)
 
             g_loss = self.alpha_edge * loss_edge + \
                      self.alpha_pixel * loss_pixel + \
@@ -213,7 +212,7 @@ class LitTrainer(pl.LightningModule):
             loss_real = self.criterion_GAN(pred_real, True)
             loss_fake = self.criterion_GAN(pred_fake, False)
 
-            d_loss = (loss_real + loss_fake) / 2
+            d_loss = (loss_real + loss_fake) / 2 # Gradient Penalty cannot be calculated during validation
 
             self.log('Generator val agg', {'loss': g_loss},
                      on_step=False, on_epoch=True, sync_dist=True, batch_size=self.batch_size, add_dataloader_idx=False)

@@ -33,9 +33,9 @@ device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
 # run_id = 62
 # ckpt_path = glob('log/sweep-2/*/*'+str(run_id)+'*')[0]
 
-run_ids = np.arange(61,65)
-# run_ids = [12]
-ckpt_paths = [glob('log/sweep-data-4/*/*-*-'+str(run_id)+'-checkpoint-best.ckpt')[0] for run_id in run_ids]
+# run_ids = np.arange(4,6)
+run_ids = [9]
+ckpt_paths = [glob('log/losses-final/*/*-*-'+str(run_id)+'-checkpoint-best.ckpt')[0] for run_id in run_ids]
 
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
@@ -51,7 +51,7 @@ def main(ckpt_paths):
     parser.add_argument('--generator', default='ESRGAN', type=str, choices=['ESRGAN', 'RRDB', 'DeepUResnet', 'FSRCNN'])
     parser.add_argument('--num_filters', default=64, type=int)
     parser.add_argument('--patch_size', default=64, type=int)
-    parser.add_argument('--patch_overlap', default=0.5, type=float)
+    parser.add_argument('--patch_overlap', default=0.1, type=float)
     parser.set_defaults(gan=False)
 
     args = parser.parse_args()
@@ -96,14 +96,16 @@ def main(ckpt_paths):
                                 every_other=args.every_other)
     elif args.source == 'oasis':
         val_subjects, subjects_info = OASIS_data(dataset=dataset,
-                                  root_dir=data_path,
-                                  middle_slices=args.middle_slices,
-                                  every_other=args.every_other)
+                                                 root_dir=data_path,
+                                                 middle_slices=args.middle_slices,
+                                                 every_other=args.every_other,
+                                                 augment=False)
     elif args.source == 'mrbrains':
         val_subjects, subjects_info = MRBrainS18_data(dataset=dataset,
-                                       root_dir=data_path,
-                                       middle_slices=args.middle_slices,
-                                       every_other=args.every_other)
+                                                      root_dir=data_path,
+                                                      middle_slices=args.middle_slices,
+                                                      every_other=args.every_other,
+                                                      augment=False)
     else:
         raise ValueError("Dataset '{}' not implemented".format(args.source))
 
@@ -180,7 +182,9 @@ def main(ckpt_paths):
             else:
                 raise ValueError("Dataset '{}' not implemented".format(args.source))
 
-            name = 'sim={}_hcp={}'.format(model.nr_sim_train, model.nr_hcp_train)
+            name = 'WGAN-GP'
+
+            # name = 'sim={}_hcp={}'.format(model.nr_sim_train, model.nr_hcp_train)
 
             # name = 'px{}_edge{}_vgg{}_gan{}'.format(model.alpha_pixel,
             #                                         model.alpha_edge,
@@ -193,13 +197,13 @@ def main(ckpt_paths):
 
             # name = 'generator={}3'.format(args.generator)
 
-            output_path = os.path.join('output/sweep-data',
+            output_path = os.path.join('output/gradient_penalty',
                                        args.source,
                                        name,
                                        dataset)
             os.makedirs(output_path, exist_ok=True)
 
-            aggregator = tio.inference.GridAggregator(grid_samplers[i])  # , overlap_mode='average')
+            aggregator = tio.inference.GridAggregator(grid_samplers[i])#, overlap_mode='average')
 
             patch_loader = torch.utils.data.DataLoader(
                 grid_samplers[i], batch_size=model.hparams.config['batch_size'])
