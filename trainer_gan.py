@@ -393,7 +393,7 @@ class LitTrainer(pl.LightningModule):
             grid_sampler = tio.inference.GridSampler(
                 subject=self.val_set_agg[i],
                 patch_size=(self.patch_size, self.patch_size, 1),
-                patch_overlap=self.overlap,
+                patch_overlap=(6,6,0),
                 padding_mode=0,
             )
             val_agg_loader = torch.utils.data.DataLoader(

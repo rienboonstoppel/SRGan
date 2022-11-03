@@ -34,8 +34,8 @@ device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
 # ckpt_path = glob('log/sweep-2/*/*'+str(run_id)+'*')[0]
 
 # run_ids = np.arange(4,6)
-run_ids = [9]
-ckpt_paths = [glob('log/losses-final/*/*-*-'+str(run_id)+'-checkpoint-best.ckpt')[0] for run_id in run_ids]
+run_ids = [3]
+ckpt_paths = [glob('log/data-final/*/*-*-'+str(run_id)+'-checkpoint-best.ckpt')[0] for run_id in run_ids]
 
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
@@ -109,9 +109,6 @@ def main(ckpt_paths):
     else:
         raise ValueError("Dataset '{}' not implemented".format(args.source))
 
-    overlap, nr_patches = calculate_overlap(val_subjects[0],
-                                            (args.patch_size, args.patch_size),
-                                            (args.patch_overlap, args.patch_overlap))
     val_transform = tio.Compose([
         Normalize(std=args.std),
     ])
@@ -122,8 +119,8 @@ def main(ckpt_paths):
     for i in range(len(val_subjects)):
         grid_sampler = tio.inference.GridSampler(
             val_set[i],
-            patch_size=(args.patch_size, args.patch_size, 1),
-            patch_overlap=overlap,
+            patch_size=(val_subjects[i]['LR'][tio.DATA].shape[1], val_subjects[i]['LR'][tio.DATA].shape[2], 1),
+            patch_overlap=0,
             padding_mode=0,
         )
         grid_samplers.append(grid_sampler)
@@ -182,9 +179,9 @@ def main(ckpt_paths):
             else:
                 raise ValueError("Dataset '{}' not implemented".format(args.source))
 
-            name = 'WGAN-GP'
+            # name = 'WGAN-GP'
 
-            # name = 'sim={}_hcp={}'.format(model.nr_sim_train, model.nr_hcp_train)
+            name = 'sim={}_hcp={}'.format(model.nr_sim_train, model.nr_hcp_train)
 
             # name = 'px{}_edge{}_vgg{}_gan{}'.format(model.alpha_pixel,
             #                                         model.alpha_edge,
@@ -197,10 +194,10 @@ def main(ckpt_paths):
 
             # name = 'generator={}3'.format(args.generator)
 
-            output_path = os.path.join('output/gradient_penalty',
+            output_path = os.path.join('output/data-final',
                                        args.source,
                                        name,
-                                       dataset)
+                                       dataset+'_patch-test')
             os.makedirs(output_path, exist_ok=True)
 
             aggregator = tio.inference.GridAggregator(grid_samplers[i])#, overlap_mode='average')
