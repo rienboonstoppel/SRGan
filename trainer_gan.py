@@ -43,6 +43,7 @@ class LitTrainer(pl.LightningModule):
         self.criterion_pixel = torch.nn.L1Loss()  # method to calculate pixel differences
         self.criterion_perceptual = torch.nn.L1Loss()  # method to calculate differences between vgg features
         self.criterion_GAN = GANLoss(gan_mode=config.gan_mode)  # method to calculate adversarial loss
+        self.gan_mode = config.gan_mode
         self.gradient_penalty = GradientPenalty(critic=self.netD, fake_label=1.0)
         self.criterion_edge = globals()['edge_loss' + str(config.edge_loss)]
         self.alpha_edge = config.alpha_edge
@@ -121,11 +122,22 @@ class LitTrainer(pl.LightningModule):
             pred_real = self.netD(imgs_hr).detach()
             pred_fake = self.netD(imgs_sr)
 
-            if self.ragan:
-                pred_fake -= pred_real.mean(0, keepdim=True)
 
+            # TODO CHECK!!
             # Adversarial loss
-            loss_adv = self.criterion_GAN(pred_fake, True)
+            if self.ragan:
+                pred_real, pred_fake = pred_real - pred_fake.mean(0, keepdim=True), \
+                                       pred_fake - pred_real.mean(0, keepdim=True)
+                if self.gan_mode is 'wgan':
+                    loss_adv = self.criterion_GAN(pred_fake, True)
+                else:
+                    loss_adv = self.criterion_GAN(pred_real, False) + self.criterion_GAN(pred_fake, True)
+
+            else:
+                loss_adv = self.criterion_GAN(pred_fake, True)
+
+            # loss_adv = self.criterion_GAN(pred_fake, True)
+
 
             g_loss = self.alpha_edge * loss_edge + \
                      self.alpha_pixel * loss_pixel + \
@@ -192,12 +204,20 @@ class LitTrainer(pl.LightningModule):
             pred_fake = self.netD(imgs_sr)
 
             # Relativistic average GAN
+            # TODO CHECK!!
+            # Adversarial loss
             if self.ragan:
                 pred_real, pred_fake = pred_real - pred_fake.mean(0, keepdim=True), \
                                        pred_fake - pred_real.mean(0, keepdim=True)
+                if self.gan_mode is 'wgan':
+                    loss_adv = self.criterion_GAN(pred_fake, True)
+                else:
+                    loss_adv = self.criterion_GAN(pred_real, False) + self.criterion_GAN(pred_fake, True)
 
-            # Adversarial loss
-            loss_adv = self.criterion_GAN(pred_fake, True)
+            else:
+                loss_adv = self.criterion_GAN(pred_fake, True)
+
+            # loss_adv = self.criterion_GAN(pred_fake, True)
 
             g_loss = self.alpha_edge * loss_edge + \
                      self.alpha_pixel * loss_pixel + \
@@ -286,7 +306,7 @@ class LitTrainer(pl.LightningModule):
                             middle_slices=args.middle_slices,
                             every_other=args.every_other)
 
-        # val_subjects, _ = HCP_data(dataset='validation',
+        # val_subjects, _ = sim_data(dataset='validation',
         #                            middle_slices=args.middle_slices,
         #                            root_dir=data_path,
         #                            every_other=args.every_other)

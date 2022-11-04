@@ -34,8 +34,8 @@ default_config = {
     'alpha_edge': 0.3,
     'alpha_perceptual': 1,
     'alpha_adversarial': 0.1,
-    'ragan': False,
-    'gan_mode': 'wgan',
+    'ragan': True,
+    'gan_mode': 'vanilla',
     'edge_loss': 2,
     'netD_freq': 1,
     'data_resolution': '1mm_07mm',
@@ -60,7 +60,7 @@ def main(default_config):
     parser.set_defaults(gan=False)
     parser.set_defaults(no_checkpointing=False)
 
-    log_folder = 'log/new-exps'
+    log_folder = 'log/losses-final'
 
     # --precision=16 --gpus=1 --log_every_n_steps=50 --max_epochs=-1 --max_time="00:00:00:00"
     parser = pl.Trainer.add_argparse_args(parser)

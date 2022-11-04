@@ -34,8 +34,13 @@ device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
 # ckpt_path = glob('log/sweep-2/*/*'+str(run_id)+'*')[0]
 
 # run_ids = np.arange(4,6)
-run_ids = [3]
-ckpt_paths = [glob('log/data-final/*/*-*-'+str(run_id)+'-checkpoint-best.ckpt')[0] for run_id in run_ids]
+run_ids = [6]
+ckpt_paths = [glob('log/new-exps/*/*-*-'+str(run_id)+'-checkpoint-best.ckpt')[0] for run_id in run_ids]
+
+# ckpt_paths = [
+#     'log/new-exps/sandy-haze-3/sandy-haze-3-checkpoint-epoch=3.ckpt',
+#     'log/new-exps/earnest-moon-4/earnest-moon-4-checkpoint-epoch=3.ckpt'
+# ]
 
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
@@ -181,23 +186,24 @@ def main(ckpt_paths):
 
             # name = 'WGAN-GP'
 
-            name = 'sim={}_hcp={}'.format(model.nr_sim_train, model.nr_hcp_train)
+            # name = 'sim={}_hcp={}'.format(model.nr_sim_train, model.nr_hcp_train)
 
             # name = 'px{}_edge{}_vgg{}_gan{}'.format(model.alpha_pixel,
             #                                         model.alpha_edge,
             #                                         model.alpha_perceptual,
             #                                         model.hparams.config['alpha_adversarial']).replace('.', '')
 
-            # name = 'mode={}_ragan={}'.format(
-            #     model.hparams.config['gan_mode'],
-            #     model.hparams.config['ragan'])
+            name = 'mode={}_ragan={}_blocks={}_2'.format(
+                model.hparams.config['gan_mode'],
+                model.hparams.config['ragan'],
+                model.hparams.config['num_res_blocks'])
 
             # name = 'generator={}3'.format(args.generator)
 
-            output_path = os.path.join('output/data-final',
+            output_path = os.path.join('output/new-exps',
                                        args.source,
                                        name,
-                                       dataset+'_patch-test')
+                                       dataset)
             os.makedirs(output_path, exist_ok=True)
 
             aggregator = tio.inference.GridAggregator(grid_samplers[i])#, overlap_mode='average')
