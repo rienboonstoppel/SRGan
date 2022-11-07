@@ -11,36 +11,30 @@ from models.generator_DeepUResnet import DeepUResnet as generator_DeepUResnet
 from models.discriminator import Discriminator
 from models.feature_extractor import FeatureExtractor
 from argparse import ArgumentParser
-from utils import print_config, save_subject, save_to_nifti
-from dataset_tio import SimImage, MRBrainS18Image, HCPImage, OASISImage, calculate_overlap, sim_data, \
-    MRBrainS18_data, HCP_data, OASIS_data
-from transform import Normalize, RandomIntensity, RandomGamma, RandomBiasField
-from metrics import get_scores
-import time
+from utils import save_to_nifti
+from dataset_tio import sim_data, MRBrainS18_data, HCP_data, OASIS_data
+from transform import Normalize
 from glob import glob
 from tqdm import tqdm
+import json
 
 device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
-
-# ## Single runs
-# exp_name = 'test-checkpoint-1'
-# epoch = 4
-# ckpt_fname1 = '{}-checkpoint-epoch={}.ckpt'.format(exp_name, 1)
-# ckpt_fname2 = '{}-checkpoint-epoch={}.ckpt'.format(exp_name, 4)
-# ckpt_paths = [os.path.join('log', exp_name, ckpt_fname1), os.path.join('log', exp_name, ckpt_fname2)]
 
 # Sweep
 # run_id = 62
 # ckpt_path = glob('log/sweep-2/*/*'+str(run_id)+'*')[0]
 
-# run_ids = np.arange(4,6)
-run_ids = [6]
-ckpt_paths = [glob('log/new-exps/*/*-*-'+str(run_id)+'-checkpoint-best.ckpt')[0] for run_id in run_ids]
+# run_ids = np.arange(13,15)
+run_ids = [16]
+ckpt_paths = [glob('log/final-checks/*/*-*-' + str(run_id) + '-checkpoint-best.ckpt')[0] for run_id in run_ids]
+# ckpt_paths.append('log/final-checks/blooming-salad-12/blooming-salad-12-checkpoint-epoch=3.ckpt')
 
-# ckpt_paths = [
-#     'log/new-exps/sandy-haze-3/sandy-haze-3-checkpoint-epoch=3.ckpt',
-#     'log/new-exps/earnest-moon-4/earnest-moon-4-checkpoint-epoch=3.ckpt'
-# ]
+output_folder = 'output/test'
+
+
+# ckpt_paths = ['/mnt/beta/djboonstoppel/Code/log/final-checks/restful-valley-3/restful-valley-3-checkpoint-best.ckpt',
+#               '/mnt/beta/djboonstoppel/Code/log/final-checks/fragrant-wind-4/fragrant-wind-4-checkpoint-epoch=5.ckpt']
+
 
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
@@ -48,7 +42,7 @@ class AttrDict(dict):
         self.__dict__ = self
 
 
-def main(ckpt_paths):
+def main(ckpt_paths, output_folder):
     parser = ArgumentParser()
     parser.add_argument('--root_dir', default='/mnt/beta/djboonstoppel/Code', type=str)
     parser.add_argument('--gan', action='store_true')
@@ -69,7 +63,7 @@ def main(ckpt_paths):
         args = parser.parse_args()
 
     if args.generator == 'ESRGAN':
-        generator = generator_ESRGAN(channels=1, filters=args.num_filters, num_res_blocks=1)
+        generator = generator_ESRGAN(channels=1, filters=args.num_filters, num_res_blocks=3)
     elif args.generator == 'RRDB':
         generator = generator_RRDB(channels=1, filters=args.num_filters, num_res_blocks=1)
     elif args.generator == 'DeepUResnet':
@@ -90,47 +84,46 @@ def main(ckpt_paths):
     dataset = 'test'
 
     if args.source == 'sim':
-        val_subjects, subjects_info = sim_data(dataset=dataset,
-                                root_dir=data_path,
-                                middle_slices=args.middle_slices,
-                                every_other=args.every_other)
+        subjects, subjects_info = sim_data(dataset=dataset,
+                                           root_dir=data_path,
+                                           middle_slices=args.middle_slices,
+                                           every_other=args.every_other)
     elif args.source == 'hcp':
-        val_subjects, subjects_info = HCP_data(dataset=dataset,
-                                root_dir=data_path,
-                                middle_slices=args.middle_slices,
-                                every_other=args.every_other)
+        subjects, subjects_info = HCP_data(dataset=dataset,
+                                           root_dir=data_path,
+                                           middle_slices=args.middle_slices,
+                                           every_other=args.every_other)
     elif args.source == 'oasis':
-        val_subjects, subjects_info = OASIS_data(dataset=dataset,
-                                                 root_dir=data_path,
-                                                 middle_slices=args.middle_slices,
-                                                 every_other=args.every_other,
-                                                 augment=False)
+        subjects, subjects_info = OASIS_data(dataset=dataset,
+                                             root_dir=data_path,
+                                             middle_slices=args.middle_slices,
+                                             every_other=args.every_other,
+                                             augment=False)
     elif args.source == 'mrbrains':
-        val_subjects, subjects_info = MRBrainS18_data(dataset=dataset,
-                                                      root_dir=data_path,
-                                                      middle_slices=args.middle_slices,
-                                                      every_other=args.every_other,
-                                                      augment=False)
+        subjects, subjects_info = MRBrainS18_data(dataset=dataset,
+                                                  root_dir=data_path,
+                                                  middle_slices=args.middle_slices,
+                                                  every_other=args.every_other,
+                                                  augment=False)
     else:
         raise ValueError("Dataset '{}' not implemented".format(args.source))
 
-    val_transform = tio.Compose([
+    transform = tio.Compose([
         Normalize(std=args.std),
     ])
-    val_set = tio.SubjectsDataset(
-        val_subjects, transform=val_transform)
+    predict_set = tio.SubjectsDataset(
+        subjects, transform=transform)
 
     grid_samplers = []
-    for i in range(len(val_subjects)):
+    for i in range(len(subjects)):
         grid_sampler = tio.inference.GridSampler(
-            val_set[i],
-            patch_size=(val_subjects[i]['LR'][tio.DATA].shape[1], val_subjects[i]['LR'][tio.DATA].shape[2], 1),
+            predict_set[i],
+            patch_size=(subjects[i]['LR'][tio.DATA].shape[1], subjects[i]['LR'][tio.DATA].shape[2], 1),
             patch_overlap=0,
             padding_mode=0,
         )
         grid_samplers.append(grid_sampler)
 
-    # j = 1
     for ckpt_path in ckpt_paths:
         path = os.path.join(args.root_dir, ckpt_path)
         if args.gan:
@@ -146,35 +139,22 @@ def main(ckpt_paths):
                 netF=feature_extractor,
                 checkpoint_path=path,
             )
-        print('Checkpoint trained on {} hcp subjects and {} sim subjects'.format(model.hparams.config['nr_hcp_train'],
-                                                                                 model.hparams.config['nr_sim_train']))
 
-        # print('Checkpoint trained on {} hcp subjects, with alpha losses; pixel: {}, edge: {}, vgg: {}, gan: {}'.format(
-        #     model.hparams.config['nr_hcp_train'],
-        #     model.alpha_pixel,
-        #     model.alpha_edge,
-        #     model.alpha_perceptual,
-        #     model.hparams.config['alpha_adversarial'],
-        # ))
-
-        # print('Checkpoint trained on {} hcp and {} sim subjects, with gan_mode {} and ragan {}'.format(
-        #     model.hparams.config['nr_hcp_train'],
-        #     model.hparams.config['nr_sim_train'],
-        #     model.hparams.config['gan_mode'],
-        #     model.hparams.config['ragan']))
-
-        # print('Checkpoint trained on {} hcp and {} sim subjects, with generator {}'.format(
-        #     model.hparams.config['nr_hcp_train'],
-        #     model.hparams.config['nr_sim_train'],
-        #     args.generator))
-
+        print('Predicting images using model checkpoint trained with config:')
+        print_args = ['nr_hcp_train', 'nr_sim_train', 'alpha_pixel', 'alpha_edge', 'alpha_perceptual',
+                      'alpha_adversarial', 'alpha_gradientpenalty', 'generator', 'num_res_blocks', 'gan_mode', 'ragan']
+        print("{:<22}| {:<10}".format('Var', 'Value'))
+        print('-' * 32)
+        for arg in print_args:
+            print("{:<22}| {:<10} ".format(arg, model.hparams.config[arg]))
 
         model.to(device)
         model.eval()
 
         for i in tqdm(range(len(grid_samplers))):
             if args.source == 'sim':
-                img_fname = "08-Apr-2022_Ernst_labels_{:06d}_3T_T1w_MPR1_img_act_1_contrast_1".format(subjects_info[i]['id'])
+                img_fname = "08-Apr-2022_Ernst_labels_{:06d}_3T_T1w_MPR1_img_act_1_contrast_1".format(
+                    subjects_info[i]['id'])
             elif args.source == 'hcp':
                 img_fname = "{:06d}_3T_T1w_MPR1_img".format(subjects_info[i]['id'])
             elif args.source == 'oasis':
@@ -184,34 +164,40 @@ def main(ckpt_paths):
             else:
                 raise ValueError("Dataset '{}' not implemented".format(args.source))
 
-            # name = 'WGAN-GP'
-
             # name = 'sim={}_hcp={}'.format(model.nr_sim_train, model.nr_hcp_train)
 
-            # name = 'px{}_edge{}_vgg{}_gan{}'.format(model.alpha_pixel,
-            #                                         model.alpha_edge,
-            #                                         model.alpha_perceptual,
-            #                                         model.hparams.config['alpha_adversarial']).replace('.', '')
-
-            name = 'mode={}_ragan={}_blocks={}_2'.format(
+            # folder_name = 'px={}_edge={}_vgg={}_gan={}_mode={}_ragan={}' \
+            folder_name = 'gen={}_blocks={}_mode={}_ragan={}' \
+                        .format(
+                # model.hparams.config['alpha_pixel'],
+                # model.hparams.config['alpha_edge'],
+                # model.hparams.config['alpha_perceptual'],
+                # model.hparams.config['alpha_adversarial'],
+                args.generator,
+                model.hparams.config['num_res_blocks'],
                 model.hparams.config['gan_mode'],
                 model.hparams.config['ragan'],
-                model.hparams.config['num_res_blocks'])
+                        ).replace('.', '')
 
-            # name = 'generator={}3'.format(args.generator)
 
-            output_path = os.path.join('output/new-exps',
+            # name = 'mode={}_ragan={}_blocks={}_updated'.format(
+            #     model.hparams.config['gan_mode'],
+            #     model.hparams.config['ragan'],
+            #     model.hparams.config['num_res_blocks'])
+
+            output_path = os.path.join(output_folder,
                                        args.source,
-                                       name,
+                                       folder_name,
                                        dataset)
             os.makedirs(output_path, exist_ok=True)
 
-            aggregator = tio.inference.GridAggregator(grid_samplers[i])#, overlap_mode='average')
+            with open(os.path.join(output_path, 'config.json'), 'w') as outfile:
+                json.dump(dict(model.hparams.config), outfile, indent=4)
+
+            aggregator = tio.inference.GridAggregator(grid_samplers[i])
 
             patch_loader = torch.utils.data.DataLoader(
                 grid_samplers[i], batch_size=model.hparams.config['batch_size'])
-
-            # start_time = time.time()
 
             with torch.no_grad():
                 for patches_batch in patch_loader:
@@ -221,9 +207,6 @@ def main(ckpt_paths):
                     locations = patches_batch[tio.LOCATION]
                     aggregator.add_batch(imgs_sr, locations)
 
-            # end_time = time.time()
-            # print('Time: {:.10f} s'.format(end_time - start_time))
-
             foreground = aggregator.get_output_tensor() * args.std
             generated = tio.ScalarImage(tensor=foreground)
             sr = tio.Subject({'SR': generated})
@@ -232,9 +215,10 @@ def main(ckpt_paths):
                           header=subjects_info[i]['LR']['header'],
                           max_val=subjects_info[i]['LR']['scaling'],
                           fname=os.path.join(output_path,
-                                             img_fname + '_SR_' + name + '.nii.gz'),
+                                             img_fname + '_SR.nii.gz'),
                           source=args.source,
                           )
 
+
 if __name__ == '__main__':
-    main(ckpt_paths)
+    main(ckpt_paths, output_folder)

@@ -44,13 +44,13 @@ class LitTrainer(pl.LightningModule):
         self.criterion_perceptual = torch.nn.L1Loss()  # method to calculate differences between vgg features
         self.criterion_GAN = GANLoss(gan_mode=config.gan_mode)  # method to calculate adversarial loss
         self.gan_mode = config.gan_mode
-        self.gradient_penalty = GradientPenalty(critic=self.netD, fake_label=1.0)
+        self.gradient_penalty = GradientPenalty(critic=self.netD)
         self.criterion_edge = globals()['edge_loss' + str(config.edge_loss)]
         self.alpha_edge = config.alpha_edge
         self.alpha_pixel = config.alpha_pixel
         self.alpha_perceptual = config.alpha_perceptual
         self.alpha_adv = config.alpha_adversarial
-
+        self.alpha_gp = config.alpha_gradientpenalty
         self.netD_freq = config.netD_freq
 
         self.data_resolution = config.data_resolution
@@ -62,6 +62,8 @@ class LitTrainer(pl.LightningModule):
         self.ragan = config.ragan
         self.log_images_train = False
         self.log_images_val = False
+        self.val_sim = False
+        self.val_hcp = True
 
         if config.optimizer == 'sgd':
             self.optimizer_G = torch.optim.SGD(netG.parameters(),
@@ -122,22 +124,16 @@ class LitTrainer(pl.LightningModule):
             pred_real = self.netD(imgs_hr).detach()
             pred_fake = self.netD(imgs_sr)
 
-
-            # TODO CHECK!!
-            # Adversarial loss
-            if self.ragan:
+            # Adversarial loss depended of gan_mode and ragan
+            if self.gan_mode == 'vanilla' and self.ragan:
                 pred_real, pred_fake = pred_real - pred_fake.mean(0, keepdim=True), \
                                        pred_fake - pred_real.mean(0, keepdim=True)
-                if self.gan_mode is 'wgan':
-                    loss_adv = self.criterion_GAN(pred_fake, True)
-                else:
-                    loss_adv = self.criterion_GAN(pred_real, False) + self.criterion_GAN(pred_fake, True)
-
-            else:
+                loss_adv = (self.criterion_GAN(pred_real, False) + self.criterion_GAN(pred_fake, True)) / 2
+            elif self.gan_mode == 'wgan' and not self.ragan:
                 loss_adv = self.criterion_GAN(pred_fake, True)
-
-            # loss_adv = self.criterion_GAN(pred_fake, True)
-
+            else:
+                raise ValueError(
+                    'Only RaSGAN and WGAN allowed')
 
             g_loss = self.alpha_edge * loss_edge + \
                      self.alpha_pixel * loss_pixel + \
@@ -175,7 +171,7 @@ class LitTrainer(pl.LightningModule):
             # Calculate gradient penalty
             gradient_penalty = self.gradient_penalty(imgs_hr, imgs_sr)
 
-            d_loss = ((loss_real + loss_fake) / 2) + gradient_penalty
+            d_loss = (loss_real + loss_fake) / 2 + self.alpha_gp * gradient_penalty
 
             self.log('Discriminator train', {'loss': d_loss},
                      on_step=False, on_epoch=True, sync_dist=True, batch_size=self.batch_size)
@@ -203,21 +199,16 @@ class LitTrainer(pl.LightningModule):
             pred_real = self.netD(imgs_hr)
             pred_fake = self.netD(imgs_sr)
 
-            # Relativistic average GAN
-            # TODO CHECK!!
-            # Adversarial loss
-            if self.ragan:
+            # Adversarial loss depended of gan_mode and ragan
+            if self.gan_mode == 'vanilla' and self.ragan:
                 pred_real, pred_fake = pred_real - pred_fake.mean(0, keepdim=True), \
                                        pred_fake - pred_real.mean(0, keepdim=True)
-                if self.gan_mode is 'wgan':
-                    loss_adv = self.criterion_GAN(pred_fake, True)
-                else:
-                    loss_adv = self.criterion_GAN(pred_real, False) + self.criterion_GAN(pred_fake, True)
-
-            else:
+                loss_adv = (self.criterion_GAN(pred_real, False) + self.criterion_GAN(pred_fake, True)) / 2
+            elif self.gan_mode == 'wgan' and not self.ragan:
                 loss_adv = self.criterion_GAN(pred_fake, True)
-
-            # loss_adv = self.criterion_GAN(pred_fake, True)
+            else:
+                raise ValueError(
+                    'Only RaSGAN and WGAN allowed')
 
             g_loss = self.alpha_edge * loss_edge + \
                      self.alpha_pixel * loss_pixel + \
@@ -232,7 +223,7 @@ class LitTrainer(pl.LightningModule):
             loss_real = self.criterion_GAN(pred_real, True)
             loss_fake = self.criterion_GAN(pred_fake, False)
 
-            d_loss = (loss_real + loss_fake) / 2 # Gradient Penalty cannot be calculated during validation
+            d_loss = (loss_real + loss_fake) / 2  # Gradient Penalty cannot be calculated during validation
 
             self.log('Generator val agg', {'loss': g_loss},
                      on_step=False, on_epoch=True, sync_dist=True, batch_size=self.batch_size, add_dataloader_idx=False)
@@ -279,13 +270,6 @@ class LitTrainer(pl.LightningModule):
                          },
                  on_epoch=True, sync_dist=True, prog_bar=False, batch_size=self.batch_size)
         self.log('NCC_mean', metrics['NCC']['mean'], sync_dist=True, prog_bar=True)
-        #
-        # self.log('NRMSE', {'Mean': metrics['NRMSE']['mean'],
-        #                    'Q1': metrics['NRMSE']['quartiles'][0],
-        #                    'Median': metrics['NRMSE']['quartiles'][1],
-        #                    'Q3': metrics['NRMSE']['quartiles'][2],
-        #                    },
-        #          on_epoch=True, sync_dist=True, prog_bar=False, batch_size=self.batch_size)
 
         middle = int(SR_aggs[0].shape[3] / 2)
         grid = torch.stack([SR_aggs[i][:, :, :, middle].squeeze() for i in range(len(SR_aggs))], dim=0).unsqueeze(1)
@@ -301,15 +285,24 @@ class LitTrainer(pl.LightningModule):
                               nr_hcp=self.nr_hcp_train,
                               middle_slices=args.middle_slices,
                               every_other=args.every_other)
-        val_subjects = data(dataset='validation',
-                            root_dir=data_path,
-                            middle_slices=args.middle_slices,
-                            every_other=args.every_other)
 
-        # val_subjects, _ = sim_data(dataset='validation',
-        #                            middle_slices=args.middle_slices,
-        #                            root_dir=data_path,
-        #                            every_other=args.every_other)
+        if self.val_sim and not self.val_hcp:
+            val_subjects, _ = sim_data(dataset='validation',
+                                       middle_slices=args.middle_slices,
+                                       root_dir=data_path,
+                                       every_other=args.every_other)
+        elif not self.val_sim and self.val_hcp:
+            val_subjects, _ = HCP_data(dataset='validation',
+                                       middle_slices=args.middle_slices,
+                                       root_dir=data_path,
+                                       every_other=args.every_other)
+        elif self.val_sim and self.val_hcp:
+            val_subjects = data(dataset='validation',
+                                root_dir=data_path,
+                                middle_slices=args.middle_slices,
+                                every_other=args.every_other)
+        else:
+            raise ValueError('At least one of Sim of HCP has to be in validation set')
 
         self.num_val_subjects = len(val_subjects)
 
@@ -409,11 +402,11 @@ class LitTrainer(pl.LightningModule):
         self.val_len = len(val_loader)
 
         loaders = []
-        for i in range(10): #range(self.num_val_subjects):
+        for i in range(10):  # range(self.num_val_subjects):
             grid_sampler = tio.inference.GridSampler(
                 subject=self.val_set_agg[i],
                 patch_size=(self.patch_size, self.patch_size, 1),
-                patch_overlap=(6,6,0),
+                patch_overlap=(6, 6, 0),
                 padding_mode=0,
             )
             val_agg_loader = torch.utils.data.DataLoader(
@@ -430,12 +423,13 @@ class LitTrainer(pl.LightningModule):
     def configure_optimizers(self):
         opt_g = self.optimizer_G
         opt_d = self.optimizer_D
-        lr_scheduler = torch.optim.lr_scheduler.ExponentialLR
+        lr_scheduler_g = torch.optim.lr_scheduler.ExponentialLR
+        lr_scheduler_d = torch.optim.lr_scheduler.ExponentialLR
 
         return (
             {'optimizer': opt_g,
-             'lr_scheduler': {'scheduler': lr_scheduler(self.optimizer_G, gamma=0.99999)},
+             'lr_scheduler': {'scheduler': lr_scheduler_g(self.optimizer_G, gamma=0.9)},
              'frequency': 1},
             {'optimizer': opt_d,
-             'lr_scheduler': {'scheduler': lr_scheduler(self.optimizer_D, gamma=0.99999)},
+             'lr_scheduler': {'scheduler': lr_scheduler_d(self.optimizer_D, gamma=0.9)},
              'frequency': self.netD_freq})

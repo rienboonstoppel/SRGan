@@ -33,18 +33,20 @@ default_config = {
     'alpha_pixel': 0.7,
     'alpha_edge': 0.3,
     'alpha_perceptual': 1,
-    'alpha_adversarial': 0.1,
-    'ragan': True,
-    'gan_mode': 'vanilla',
+    'alpha_adversarial': 0.01,
+    'alpha_gradientpenalty': 10,
+    'ragan': False,
+    'gan_mode': 'wgan',
     'edge_loss': 2,
     'netD_freq': 1,
     'data_resolution': '1mm_07mm',
     'nr_hcp_train': 30,
-    'nr_sim_train': 30,
+    'nr_sim_train': 0,
     'patch_overlap': 0.5,
     'generator': 'ESRGAN',
     'num_res_blocks': 1,
 }
+
 
 def main(default_config):
     pl.seed_everything(21011998)
@@ -60,23 +62,24 @@ def main(default_config):
     parser.set_defaults(gan=False)
     parser.set_defaults(no_checkpointing=False)
 
-    log_folder = 'log/losses-final'
-
     # --precision=16 --gpus=1 --log_every_n_steps=50 --max_epochs=-1 --max_time="00:00:00:00"
     parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
 
+    # log_folder = 'log/new-exps'
+    log_folder = os.path.join('log', args.wandb_project)
+
     if args.name:
         os.makedirs(os.path.join(args.root_dir, log_folder, args.name), exist_ok=True)
         run = wandb.init(config=default_config,
-                   project=args.wandb_project,
-                   name=args.name,
-                   dir=os.path.join(args.root_dir, log_folder, args.name)
-                   )
+                         project=args.wandb_project,
+                         name=args.name,
+                         dir=os.path.join(args.root_dir, log_folder, args.name)
+                         )
     else:
         run = wandb.init(config=default_config,
-                   project=args.wandb_project,
-                   )
+                         project=args.wandb_project,
+                         )
         os.makedirs(os.path.join(args.root_dir, log_folder, wandb.run.name), exist_ok=True)
 
     if args.gan:
@@ -113,17 +116,17 @@ def main(default_config):
 
     early_stop_callback = EarlyStopping(monitor='val_loss',
                                         min_delta=0.00,
-                                        patience=3,
+                                        patience=5,
                                         verbose=False,
                                         mode='min',
                                         check_finite=True)
 
     early_stop_callback_if_nan = EarlyStopping(monitor='NCC_mean',
-                                        min_delta=0.00,
-                                        patience=25,
-                                        verbose=False,
-                                        mode='min',
-                                        check_finite=True)
+                                               min_delta=0.00,
+                                               patience=25,
+                                               verbose=False,
+                                               mode='min',
+                                               check_finite=True)
 
     checkpoint_callback_best = ModelCheckpoint(
         monitor="SSIM_mean",
@@ -142,9 +145,11 @@ def main(default_config):
     )
 
     if args.no_checkpointing:
-        callbacks = [lr_monitor, early_stop_callback, early_stop_callback_if_nan, checkpoint_callback_best]#, ModelPruning("l1_unstructured", amount=0.5)]
+        callbacks = [lr_monitor, early_stop_callback, early_stop_callback_if_nan,
+                     checkpoint_callback_best]  # , ModelPruning("l1_unstructured", amount=0.5)]
     else:
-        callbacks = [lr_monitor, early_stop_callback, early_stop_callback_if_nan, checkpoint_callback_best, checkpoint_callback_time]#, ModelPruning("l1_unstructured", amount=0.5)]
+        callbacks = [lr_monitor, early_stop_callback, early_stop_callback_if_nan, checkpoint_callback_best,
+                     checkpoint_callback_time]  # , ModelPruning("l1_unstructured", amount=0.5)]
 
     if args.gan:
         model = LitTrainer_gan(netG=generator, netF=feature_extractor, netD=discriminator, args=args, config=config)
@@ -157,7 +162,7 @@ def main(default_config):
         max_time=args.max_time,
         logger=logger,
         log_every_n_steps=args.log_every_n_steps,
-        # strategy=DDPPlugin(find_unused_parameters=True),
+        # strategy=pl.plugins.training_type.DDPPlugin(find_unused_parameters=True),
         precision=args.precision,
         callbacks=callbacks,
         enable_progress_bar=True,
