@@ -62,7 +62,7 @@ class LitTrainer(pl.LightningModule):
         self.ragan = config.ragan
         self.log_images_train = False
         self.log_images_val = False
-        self.val_sim = False
+        self.val_sim = True
         self.val_hcp = True
 
         if config.optimizer == 'sgd':

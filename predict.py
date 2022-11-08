@@ -25,15 +25,11 @@ device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
 # ckpt_path = glob('log/sweep-2/*/*'+str(run_id)+'*')[0]
 
 # run_ids = np.arange(13,15)
-run_ids = [16]
+run_ids = [13]
 ckpt_paths = [glob('log/final-checks/*/*-*-' + str(run_id) + '-checkpoint-best.ckpt')[0] for run_id in run_ids]
-# ckpt_paths.append('log/final-checks/blooming-salad-12/blooming-salad-12-checkpoint-epoch=3.ckpt')
+ckpt_paths.append('log/final-checks/winter-morning-15/winter-morning-15-checkpoint-epoch=7.ckpt')
 
-output_folder = 'output/test'
-
-
-# ckpt_paths = ['/mnt/beta/djboonstoppel/Code/log/final-checks/restful-valley-3/restful-valley-3-checkpoint-best.ckpt',
-#               '/mnt/beta/djboonstoppel/Code/log/final-checks/fragrant-wind-4/fragrant-wind-4-checkpoint-epoch=5.ckpt']
+output_folder = 'output/exp2a-gans'
 
 
 class AttrDict(dict):
@@ -63,7 +59,7 @@ def main(ckpt_paths, output_folder):
         args = parser.parse_args()
 
     if args.generator == 'ESRGAN':
-        generator = generator_ESRGAN(channels=1, filters=args.num_filters, num_res_blocks=3)
+        generator = generator_ESRGAN(channels=1, filters=args.num_filters, num_res_blocks=1)
     elif args.generator == 'RRDB':
         generator = generator_RRDB(channels=1, filters=args.num_filters, num_res_blocks=1)
     elif args.generator == 'DeepUResnet':
@@ -164,20 +160,25 @@ def main(ckpt_paths, output_folder):
             else:
                 raise ValueError("Dataset '{}' not implemented".format(args.source))
 
-            # name = 'sim={}_hcp={}'.format(model.nr_sim_train, model.nr_hcp_train)
+            folder_name = 'sim={}_hcp={}_mode={}_ragan={}'.format(
+                model.nr_sim_train,
+                model.nr_hcp_train,
+                model.hparams.config['gan_mode'],
+                model.hparams.config['ragan'],
+            )
 
             # folder_name = 'px={}_edge={}_vgg={}_gan={}_mode={}_ragan={}' \
-            folder_name = 'gen={}_blocks={}_mode={}_ragan={}' \
-                        .format(
+            # folder_name = 'gen={}_blocks={}_mode={}_ragan={}' \
+            #             .format(
                 # model.hparams.config['alpha_pixel'],
                 # model.hparams.config['alpha_edge'],
                 # model.hparams.config['alpha_perceptual'],
                 # model.hparams.config['alpha_adversarial'],
-                args.generator,
-                model.hparams.config['num_res_blocks'],
-                model.hparams.config['gan_mode'],
-                model.hparams.config['ragan'],
-                        ).replace('.', '')
+                # args.generator,
+                # model.hparams.config['num_res_blocks'],
+                # model.hparams.config['gan_mode'],
+                # model.hparams.config['ragan'],
+                #         ).replace('.', '')
 
 
             # name = 'mode={}_ragan={}_blocks={}_updated'.format(
