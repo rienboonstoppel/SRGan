@@ -11,12 +11,13 @@ from models.generator_DeepUResnet import DeepUResnet as generator_DeepUResnet
 from models.discriminator import Discriminator
 from models.feature_extractor import FeatureExtractor
 from argparse import ArgumentParser
-from utils import save_to_nifti
+from utils import save_to_nifti, save_to_nifti_pp
 from dataset_tio import sim_data, MRBrainS18_data, HCP_data, OASIS_data
 from transform import Normalize
 from glob import glob
 from tqdm import tqdm
 import json
+from skimage import filters
 
 device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
 
@@ -25,12 +26,11 @@ device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
 # ckpt_path = glob('log/sweep-2/*/*'+str(run_id)+'*')[0]
 
 # run_ids = np.arange(13,15)
-run_ids = [13]
-ckpt_paths = [glob('log/final-checks/*/*-*-' + str(run_id) + '-checkpoint-best.ckpt')[0] for run_id in run_ids]
-ckpt_paths.append('log/final-checks/winter-morning-15/winter-morning-15-checkpoint-epoch=7.ckpt')
+# run_ids = [5]
+# ckpt_paths = [glob('log/aymen/*/*-*-' + str(run_id) + '-checkpoint-best.ckpt')[0] for run_id in run_ids]
+ckpt_paths = ['log/aymen/glamorous-meadow-5/glamorous-meadow-5-checkpoint-epoch=5.ckpt']
 
-output_folder = 'output/exp2a-gans'
-
+output_folder = 'output/aymen'
 
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
@@ -83,12 +83,14 @@ def main(ckpt_paths, output_folder):
         subjects, subjects_info = sim_data(dataset=dataset,
                                            root_dir=data_path,
                                            middle_slices=args.middle_slices,
-                                           every_other=args.every_other)
+                                           every_other=args.every_other,
+                                           augment=False)
     elif args.source == 'hcp':
         subjects, subjects_info = HCP_data(dataset=dataset,
                                            root_dir=data_path,
                                            middle_slices=args.middle_slices,
-                                           every_other=args.every_other)
+                                           every_other=args.every_other,
+                                           augment=False)
     elif args.source == 'oasis':
         subjects, subjects_info = OASIS_data(dataset=dataset,
                                              root_dir=data_path,
@@ -160,26 +162,28 @@ def main(ckpt_paths, output_folder):
             else:
                 raise ValueError("Dataset '{}' not implemented".format(args.source))
 
-            folder_name = 'sim={}_hcp={}_mode={}_ragan={}'.format(
-                model.nr_sim_train,
-                model.nr_hcp_train,
-                model.hparams.config['gan_mode'],
-                model.hparams.config['ragan'],
-            )
+            # folder_name = 'sim={}_hcp={}_mode={}_ragan={}_blocks={}'.format(
+            #     model.nr_sim_train,
+            #     model.nr_hcp_train,
+            #     model.hparams.config['gan_mode'],
+            #     model.hparams.config['ragan'],
+            #     model.hparams.config['num_res_blocks'],
+            # )
+
+            folder_name = 'generator={}-gan'.format(args.generator)
 
             # folder_name = 'px={}_edge={}_vgg={}_gan={}_mode={}_ragan={}' \
             # folder_name = 'gen={}_blocks={}_mode={}_ragan={}' \
             #             .format(
-                # model.hparams.config['alpha_pixel'],
-                # model.hparams.config['alpha_edge'],
-                # model.hparams.config['alpha_perceptual'],
-                # model.hparams.config['alpha_adversarial'],
-                # args.generator,
-                # model.hparams.config['num_res_blocks'],
-                # model.hparams.config['gan_mode'],
-                # model.hparams.config['ragan'],
-                #         ).replace('.', '')
-
+            # model.hparams.config['alpha_pixel'],
+            # model.hparams.config['alpha_edge'],
+            # model.hparams.config['alpha_perceptual'],
+            # model.hparams.config['alpha_adversarial'],
+            # args.generator,
+            # model.hparams.config['num_res_blocks'],
+            # model.hparams.config['gan_mode'],
+            # model.hparams.config['ragan'],
+            #         ).replace('.', '')
 
             # name = 'mode={}_ragan={}_blocks={}_updated'.format(
             #     model.hparams.config['gan_mode'],
@@ -212,14 +216,19 @@ def main(ckpt_paths, output_folder):
             generated = tio.ScalarImage(tensor=foreground)
             sr = tio.Subject({'SR': generated})
 
-            save_to_nifti(img=sr['SR'],
+            mask = subjects[i]['MSK'][tio.DATA].numpy()[0]
+            bg_idx = np.where(mask == 0)
+
+            sr = sr['SR'][tio.DATA].numpy()[0]
+            sr[bg_idx] = 0
+
+            save_to_nifti(img=sr,
                           header=subjects_info[i]['LR']['header'],
                           max_val=subjects_info[i]['LR']['scaling'],
                           fname=os.path.join(output_path,
                                              img_fname + '_SR.nii.gz'),
                           source=args.source,
                           )
-
 
 if __name__ == '__main__':
     main(ckpt_paths, output_folder)

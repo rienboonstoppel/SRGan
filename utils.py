@@ -64,7 +64,7 @@ def save_to_nifti(img, header, fname, max_val, source):
                            [0, -1, 0, 0],
                            [0, 0, 1, 0],
                            [0, 0, 0, 1]])
-    img = img.numpy()[0]
+    # img = img.numpy()[0]
     img *= max_val
     img_nifti = nib.Nifti1Image(img, affine=affine, header=header)
     nib.save(img_nifti, fname)
@@ -90,7 +90,7 @@ def save_to_nifti_pp(img, header, fname, max_val, source):
                            [0, -1, 0, 0],
                            [0, 0, 1, 0],
                            [0, 0, 0, 1]])
-    img = img.numpy()[0]
+    # img = img.numpy()[0]
     img_aug = img + .5 * (img - filters.gaussian(img, sigma=(1, 1, 0), preserve_range=True))
     img_aug *= max_val
     img_nifti = nib.Nifti1Image(img_aug, affine=affine, header=header)

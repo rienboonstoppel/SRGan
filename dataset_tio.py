@@ -41,7 +41,7 @@ def augment_hcp(img3d):
 
     ### simple augments
     # unsharp masking
-    img3d_aug = img3d + .5 * (img3d - filters.gaussian(img3d, sigma=(1,1,0), preserve_range=True))
+    img3d_aug = img3d + 0.5 * (img3d - filters.gaussian(img3d, sigma=(1,1,0), preserve_range=True))
 
     # gamma = 1.5
     # img3d_aug = exposure.adjust_gamma(img3d, gamma=gamma, gain=1)
@@ -89,11 +89,14 @@ class Image(object):
 
         if 'MSK' in imgs_np.keys():
             if ((imgs_np['MSK'] == 0) | (imgs_np['MSK'] == 1)).all():
+                msk_eroded = cv2.erode(imgs_np['MSK'], np.ones((10, 10)), iterations=3)
+                subject.add_image(tio.LabelMap(tensor=torch.from_numpy(np.expand_dims(msk_eroded, 0))), 'MSK_eroded')
                 subject.add_image(tio.LabelMap(tensor=torch.from_numpy(np.expand_dims(imgs_np['MSK'], 0))), 'MSK')
             else:
                 imgs_np['MSK'][imgs_np['MSK'] > 0] = 1
-                msk = cv2.erode(imgs_np['MSK'], np.ones((10, 10)), iterations=3)
-                subject.add_image(tio.LabelMap(tensor=torch.from_numpy(np.expand_dims(msk, 0))), 'MSK')
+                msk_eroded = cv2.erode(imgs_np['MSK'], np.ones((10, 10)), iterations=3)
+                subject.add_image(tio.LabelMap(tensor=torch.from_numpy(np.expand_dims(msk_eroded, 0))), 'MSK_eroded')
+                subject.add_image(tio.LabelMap(tensor=torch.from_numpy(np.expand_dims(imgs_np['MSK'], 0))), 'MSK')
         return subject
 
     def info(self) -> dict:
@@ -195,6 +198,7 @@ def sim_data(dataset,
              middle_slices=50,
              every_other=1,
              root_dir='data',
+             augment=False,
              randomseed=21011998):
     # define paths
     random.seed(randomseed)
@@ -227,7 +231,7 @@ def sim_data(dataset,
     # for num in tqdm(ids_split, desc='Load {} set\t'.format(dataset), bar_format='{l_bar}{bar:15}{r_bar}{bar:-15b}',
     #                 leave=True, position=0):
     for num in ids_split:
-        data = SimImage(num, root_dir, middle_slices, every_other, data_resolution)
+        data = SimImage(num, root_dir, middle_slices, every_other, data_resolution, augment=augment)
         subjects.append(data.subject())
         info = data.info()
         info['id']=num
@@ -242,7 +246,7 @@ def HCP_data(dataset,
              nr_train_patients=30,
              nr_val_patients=10,
              nr_test_patients=10,
-             ):
+             augment=False):
     random.seed(21011998)
     path = root_dir + "/brain_real_t1w_mri/HCP/HR/"
     fnames = glob(path + "*.nii.gz")
@@ -268,7 +272,7 @@ def HCP_data(dataset,
     print('Loading HCP {} set...'.format(dataset))
 
     for num in ids_split:
-        data = HCPImage(num, root_dir=root_dir, middle_slices=middle_slices, every_other=every_other)
+        data = HCPImage(num, root_dir=root_dir, middle_slices=middle_slices, every_other=every_other, augment=augment)
         subjects.append(data.subject())
         info = data.info()
         info['id'] = num

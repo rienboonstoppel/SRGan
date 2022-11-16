@@ -62,7 +62,7 @@ class LitTrainer(pl.LightningModule):
         self.ragan = config.ragan
         self.log_images_train = False
         self.log_images_val = False
-        self.val_sim = True
+        self.val_sim = False
         self.val_hcp = True
 
         if config.optimizer == 'sgd':
@@ -362,7 +362,7 @@ class LitTrainer(pl.LightningModule):
             probabilities = {0: 0, 1: 1}
             self.sampler = tio.data.LabelSampler(
                 patch_size=(self.patch_size, self.patch_size, 1),
-                label_name='MSK',
+                label_name='MSK_eroded',
                 label_probabilities=probabilities,
             )
 

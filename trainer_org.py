@@ -53,6 +53,8 @@ class LitTrainer(pl.LightningModule):
         self.patch_size = config.patch_size
         self.log_images_train = False
         self.log_images_val = False
+        self.val_sim = True
+        self.val_hcp = False
 
         if config.optimizer == 'sgd':
             self.optimizer = torch.optim.SGD(netG.parameters(),
@@ -115,8 +117,8 @@ class LitTrainer(pl.LightningModule):
         if dataloader_idx == 0:
             imgs_lr, imgs_hr = self.prepare_batch(batch)
             imgs_sr = self(imgs_lr)
-            loss_edge = self.criterion_edge(imgs_sr, imgs_hr)
-            loss_pixel = self.criterion_pixel(imgs_sr, imgs_hr)
+            loss_pixel = self.criterion_pixel(imgs_sr, imgs_hr) if self.alpha_pixel != 0 else 0
+            loss_edge = self.criterion_edge(imgs_sr, imgs_hr) if self.alpha_edge != 0 else 0
 
             if self.alpha_perceptual != 0:
                 gen_features = self.netF(imgs_sr.repeat(1, 3, 1, 1))
@@ -173,13 +175,6 @@ class LitTrainer(pl.LightningModule):
                  on_epoch=True, sync_dist=True, prog_bar=False, batch_size=self.batch_size)
         self.log('NCC_mean', metrics['NCC']['mean'], sync_dist=True, prog_bar=True)
 
-        self.log('NRMSE', {'Mean': metrics['NRMSE']['mean'],
-                           'Q1': metrics['NRMSE']['quartiles'][0],
-                           'Median': metrics['NRMSE']['quartiles'][1],
-                           'Q3': metrics['NRMSE']['quartiles'][2],
-                           },
-                 on_epoch=True, sync_dist=True, prog_bar=False, batch_size=self.batch_size)
-
         middle = int(SR_aggs[0].shape[3] / 2)
         grid = torch.stack([SR_aggs[i][:, :, :, middle].squeeze() for i in range(len(SR_aggs))], dim=0).unsqueeze(1)
         self.logger.log_image('aggregated validation', [wandb.Image(make_grid(torch.clamp(grid, 0, 1.5), nrow=5))])
@@ -195,15 +190,23 @@ class LitTrainer(pl.LightningModule):
                               middle_slices=args.middle_slices,
                               every_other=args.every_other)
 
-        val_subjects, _ = sim_data(dataset='validation',
-                                   middle_slices=args.middle_slices,
-                                   root_dir=data_path,
-                                   every_other=args.every_other)
-
-        # val_subjects = data(dataset='validation',
-        #                     root_dir=data_path,
-        #                     middle_slices=args.middle_slices,
-        #                     every_other=args.every_other)
+        if self.val_sim and not self.val_hcp:
+            val_subjects, _ = sim_data(dataset='validation',
+                                       middle_slices=args.middle_slices,
+                                       root_dir=data_path,
+                                       every_other=args.every_other)
+        elif not self.val_sim and self.val_hcp:
+            val_subjects, _ = HCP_data(dataset='validation',
+                                       middle_slices=args.middle_slices,
+                                       root_dir=data_path,
+                                       every_other=args.every_other)
+        elif self.val_sim and self.val_hcp:
+            val_subjects = data(dataset='validation',
+                                root_dir=data_path,
+                                middle_slices=args.middle_slices,
+                                every_other=args.every_other)
+        else:
+            raise ValueError('At least one of Sim of HCP has to be in validation set')
 
         self.num_val_subjects = len(val_subjects)
 
@@ -263,7 +266,7 @@ class LitTrainer(pl.LightningModule):
             probabilities = {0: 0, 1: 1}
             self.sampler = tio.data.LabelSampler(
                 patch_size=(self.patch_size, self.patch_size, 1),
-                label_name='MSK',
+                label_name='MSK_eroded',
                 label_probabilities=probabilities,
             )
 
@@ -303,11 +306,11 @@ class LitTrainer(pl.LightningModule):
         self.val_len = len(val_loader)
 
         loaders = []
-        for i in range(10): #range(self.num_val_subjects):
+        for i in range(10):  # range(self.num_val_subjects):
             grid_sampler = tio.inference.GridSampler(
                 subject=self.val_set_agg[i],
                 patch_size=(self.patch_size, self.patch_size, 1),
-                patch_overlap=self.overlap,
+                patch_overlap=(6, 6, 0),
                 padding_mode=0,
             )
             val_agg_loader = torch.utils.data.DataLoader(
@@ -324,5 +327,5 @@ class LitTrainer(pl.LightningModule):
     def configure_optimizers(self):
         return {
             'optimizer': self.optimizer,
-            'lr_scheduler': {'scheduler': torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.99999)}
+            'lr_scheduler': {'scheduler': torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.9)}
         }
