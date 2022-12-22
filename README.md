@@ -1,5 +1,9 @@
 Very short and compact README.
 
+Code made in PyCharm, using python 3.9.5. Creating a new environment and installing packages with `requirements.txt` should work.
+Otherwise one of the two provided environment configs can be used. `environment-base.yaml` is the environment I made everything in, so it quite bloated with unused packages etc. 
+`environment-clean.yaml` provides an environment with only the necessary packages and should work as well.
+
 **Main components of code:**
 
 1) `Main.py`
@@ -55,7 +59,7 @@ Accompanying trainer for GAN training. Written using Pytorch Lightning and loggi
 
 5) `predict.py`
 Run for SR generation using a model checkpoint.
-To combine with USM: USM before SR, turn on augmentation in dataloading. <br />
+To combine with USM: <br /> USM before SR, turn on augmentation in dataloading. <br />
 USM after SR, uncomment couple of lines before saving SR. <br />
 It is meant to run on command line, for example run: `python predict.py --gan --generator ESRGAN --source sim`
 
