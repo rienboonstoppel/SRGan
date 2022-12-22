@@ -21,7 +21,10 @@ def post_proc(img: torch.Tensor, bg_idx: np.ndarray, crop_coords: tuple) -> np.n
     return img_np
 
 
-SRs_path = 'output/sim=30_hcp=30_mode=wgan'
+project = 'example'
+exp_name = 'mixed-wgan'
+
+SRs_path = os.path.join('output', project, exp_name)
 
 
 def main(SRs_path):

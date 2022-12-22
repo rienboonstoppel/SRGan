@@ -134,3 +134,4 @@ wandb/
 /data/brain_simulated_t1w_mri/LR_img/
 /data/brain_simulated_t1w_mri/LR_msk/
 /output/example/
+/log_old/

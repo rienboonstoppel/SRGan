@@ -3,7 +3,7 @@ Very short and compact README.
 **Main components of code:**
 
 1) `Main.py`
-Run for training. Uses couple ways to get all the parameters
+Run for training. Uses a couple of methods to get all the parameters
 - `Argparser` in `main`: (train-specific arguments)
   - `num_workers`: (int) number of cpu cores available
   - `root_dir`: (str) root directory of main.py
@@ -24,7 +24,7 @@ Run for training. Uses couple ways to get all the parameters
   - `optimizer`: (str) adam or sgd,
   - `b1`, `b2`: (floats) betas for adam (if needed)
   - `batch_size`: (int) batch size for training
-  - `num_filters`: (int) number of filters in architecture
+  - `num_filters`: (int) number of filters in architecture of generator
   - `learning_rate_G`: (float) learning rate of generator,
   - `learning_rate_D`: (float) learning rate of discriminator (if needed),
   - `patch_size`: (int) patch size ,
@@ -32,26 +32,39 @@ Run for training. Uses couple ways to get all the parameters
   - `alpha_pixel`: (float) weighting of pixel-loss,
   - `alpha_perceptual`: (float) weighting of perceptual (VGG) loss,
   - `alpha_adversarial`: (float) weighting of adversarial loss (if needed),
-  - `ragan`: (bool) vanilla gan of relativistic average gan (if needed)
-  - `gan_mode`: (str) kind of adversarial loss (vanilla, lsgan, wgan) (if needed)
+  - `gan_mode`: (str) kind of adversarial loss (vanilla (RaSGAN), wgan) (if needed)
   - `edge_loss`: (int) kind of edge losse (1, 2, 3, see `edgeloss.py`)
   - `netD_freq`: (int) frequency the discriminator is trained vs the generator (if needed),
-  - `data_resolution`: (str) type of dataset, (1mm_07mm or 2mm-1mm)
-  - `patients_frac`: (float 0-1) percentage of data that will be used for training,
   - `patch_overlap`: (float 0-1) percentage of overlap for patches, if gridsampler,
-  - `generator`: generator architecture (ESRGAN, RRDB, FSRCNN, DeepUResnet)
+  - `generator`: generator architecture (ESRGAN, RRDB, FSRCNN, DeepUResnet, DeepUResnet_v2)
+  - `nr_sim_train`: (int) number of simulated subjects for training
+  - `nr_hcp_train`: (int) number of hcp subjects for training
+  - `nr_sim_val`: (int) number of simulated subjects for validation
+  - `nr_hcp_val`: (int) number of simulated subjects for validation
 
-2) `trainer_org.py` 
+  It is meant to run on command line, for example run: `python main.py --gan --name mixed-data --wandb_project example --gpus 1 --log_every_n_steps 500 --max_epochs 25 --no_checkpointing`
+
+2) `dataset_tio.py`
+Baseclass for data, dataset is build using TorchIO, exploiting their patch-based pipeline
+
+3) `trainer_org.py` 
 Accompanying trainer for non-GAN training. Written using Pytorch Lightning and logging to Wandb
 
-3) `trainer_gan.py` 
+4) `trainer_gan.py` 
 Accompanying trainer for GAN training. Written using Pytorch Lightning and logging to Wandb
 
-4) `sweep.yaml`
-For a hparam sweep (everything in the config can be searched) using wandb, this file can be used and adapted 
+5) `predict.py`
+Run for SR generation using a model checkpoint.
+To combine with USM: USM before SR, turn on augmentation in dataloading. <br />
+USM after SR, uncomment couple of lines before saving SR. <br />
+It is meant to run on command line, for example run: `python predict.py --gan --generator ESRGAN --source sim`
 
-5) `dataset_tio`
-Baseclass for data, dataset is build using TorchIO, exploiting their patch-based pipeline
+6) `calculate_scores.py`
+Run to calculate metrics on generated SR images <br />
+It is meant to run on command line, for example run: `python calculate_scores.py --source sim`
+
+7) `sweep.yaml`
+For a hparam sweep (everything in the config can be searched) using wandb
 
 Data is not present in this repo, but should be located in the `data` folder in root
 ```
@@ -60,24 +73,26 @@ Data is not present in this repo, but should be located in the `data` folder in 
 ├── data                          # data-folder
 │   ├── brain_real_t1w_mri        # real data
 │   │   ├── MRBrainS18            # Data from MRBrainS18 challenge
-│   │   │   ├── LR                # low-res (2mm)
-│   │   │   ├── GR                # high-res (ground truth) (1mm)
+│   │   │   ├── GT                # 1mm images
 │   │   │   └── MSK               # segmentations of GT data
+│   │   ├── OASIS                 # Data from OASIS-1
+│   │   │   ├── LR                # 1mm images
+│   │   │   └── MSK               # segmentations of LR data
 │   │   ├── HCP                   # data from HCP database
-│   │   │   ├── LR                # low-res (1mm)
-│   │   │   ├── HR                # high-res (0.7mm)
+│   │   │   ├── LR                # 1mm images
+│   │   │   ├── HR                # 0.7mm images
 │   │   │   └── MSK               # segmentations of HR data
 │   ├── brain_simulated_t1w_mri   # simulated data
-│   │   ├── 1mm_07mm              # 1mm and 0.7mm simulated data
-│   │   │   ├── HR_img            # high res simulated data (0.7mm)
-│   │   │   ├── HR_msk            # segmentations of high res simulated data
-│   │   │   └── LR_img            # low res simulated data (1mm)
-│   │   └── 2mm_1mm               # 2mm and 1mm simulated data
-│   │   │   ├── HR_img            # high res simulated data (1mm)
-│   │   │   ├── HR_msk            # segmentations of high res simulated data 
-│   │   │   └── LR_img            # low res simulated data (2mm) 
+│   │   ├── HR_img                # 0.7mm images
+│   │   ├── HR_msk                # segmentations of HR data
+│   │   └── LR_img                # 1mm images
 │   │   └── ... 
 │   └── ... 
+├── dataset_tio.py
+├── trainer_org.py
+├── trainer_gan.py
+├── predict.py
+├── calculate_scores.py
 └── ...
 ...
 ```
