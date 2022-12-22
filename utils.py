@@ -32,33 +32,6 @@ def save_to_nifti(img, header, fname, max_val, source):
     nib.save(img_nifti, fname)
 
 
-def save_to_nifti_pp(img, header, fname, max_val, source):
-    if source == 'sim':
-        affine = np.array([[-0.7, 0, 0, 0],
-                           [0, -0.7, 0, 0],
-                           [0, 0, 1, 0],
-                           [0, 0, 0, 1]])
-    elif source == 'mrbrains':
-        affine = np.array([[0.9583, 0, 0, 0],
-                           [0, 0.9583, 0, 0],
-                           [0, 0, 3, 0],
-                           [0, 0, 0, 1]])
-    elif source == 'hcp':
-        affine = np.array([[0.7, 0, 0, 0],
-                           [0, 0.7, 0, 0],
-                           [0, 0, 0.7, 0],
-                           [0, 0, 0, 1]])
-    elif source == 'oasis':
-        affine = np.array([[-1, 0, 0, 0],
-                           [0, -1, 0, 0],
-                           [0, 0, 1, 0],
-                           [0, 0, 0, 1]])
-    img_aug = img + .5 * (img - filters.gaussian(img, sigma=(1, 1, 0), preserve_range=True))
-    img_aug *= max_val
-    img_nifti = nib.Nifti1Image(img_aug, affine=affine, header=header)
-    nib.save(img_nifti, fname)
-
-
 def NCC(real_image, generated_image):
     """Method to compute the normalised cross correlation between two images.
     Arguments:

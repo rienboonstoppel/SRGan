@@ -17,6 +17,7 @@ from dataset_tio import sim_data, MRBrainS18_data, HCP_data, OASIS_data
 from transform import Normalize
 from tqdm import tqdm
 import json
+from skimage import filters
 
 device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
 
@@ -196,6 +197,11 @@ def main(ckpt_path, output_folder):
 
         sr = sr['SR'][tio.DATA].numpy()[0]
         sr[bg_idx] = 0
+
+        # # Apply unsharp masking after SR generation
+        # kernel = 1
+        # amount = 0.5
+        # sr = sr + amount * (sr - filters.gaussian(sr, sigma=(kernel, kernel, 0), preserve_range=True))
 
         save_to_nifti(img=sr,
                       header=subjects_info[i]['LR']['header'],
