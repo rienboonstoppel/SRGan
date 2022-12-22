@@ -114,6 +114,23 @@ dmypy.json
 .pyre/
 
 PyTorch-GAN/
-data/
 .idea/
 shell.txt
+/CodeOld/
+wandb/
+/log/example/
+/data/brain_real_t1w_mri/HCP/HR/
+/data/brain_real_t1w_mri/HCP/LR/
+/data/brain_real_t1w_mri/HCP/LR_old/
+/data/brain_real_t1w_mri/HCP/MSK/
+/data/brain_real_t1w_mri/MRBrainS18/GT/
+/data/brain_real_t1w_mri/MRBrainS18/Interpolation/
+/data/brain_real_t1w_mri/MRBrainS18/LR/
+/data/brain_real_t1w_mri/MRBrainS18/MSK/
+/data/brain_real_t1w_mri/OASIS/LR/
+/data/brain_real_t1w_mri/OASIS/MSK/
+/data/brain_simulated_t1w_mri/HR_img/
+/data/brain_simulated_t1w_mri/HR_msk/
+/data/brain_simulated_t1w_mri/LR_img/
+/data/brain_simulated_t1w_mri/LR_msk/
+/output/example/

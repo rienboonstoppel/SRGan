@@ -7,7 +7,7 @@ import torchio as tio
 import wandb
 from torchvision.utils import make_grid
 from edgeloss import edge_loss1, edge_loss2, edge_loss3
-from dataset_tio import sim_data, calculate_overlap, HCP_data, data
+from dataset_tio import calculate_overlap, data
 from transform import Normalize, RandomGamma, RandomIntensity, RandomBiasField, RandomBlur
 
 from utils import val_metrics, imgs_cat
@@ -41,20 +41,23 @@ class LitTrainer(pl.LightningModule):
         self.criterion_pixel = torch.nn.L1Loss()  # method to calculate pixel differences
         self.criterion_perceptual = torch.nn.L1Loss()  # method to calculate differences between vgg features
         self.criterion_edge = globals()['edge_loss' + str(config.edge_loss)]
+
+        # weightings of different loss components
         self.alpha_edge = config.alpha_edge
         self.alpha_pixel = config.alpha_pixel
         self.alpha_perceptual = config.alpha_perceptual
 
-        self.data_resolution = config.data_resolution
         self.nr_sim_train = config.nr_sim_train
         self.nr_hcp_train = config.nr_hcp_train
+        self.nr_sim_val = config.nr_sim_val
+        self.nr_hcp_val = config.nr_hcp_val
         self.patch_overlap = config.patch_overlap
         self.batch_size = config.batch_size
         self.patch_size = config.patch_size
+
+        # Flags to enable logging of patches during epochs
         self.log_images_train = False
         self.log_images_val = False
-        self.val_sim = True
-        self.val_hcp = False
 
         if config.optimizer == 'sgd':
             self.optimizer = torch.optim.SGD(netG.parameters(),
@@ -159,20 +162,7 @@ class LitTrainer(pl.LightningModule):
         SR_aggs, metrics = val_metrics(output_data, self.aggregator_HR, self.aggregator_SR, self.args.std,
                                        self.post_proc_info)
 
-        self.log('SSIM', {'Mean': metrics['SSIM']['mean'],
-                          'Q1': metrics['SSIM']['quartiles'][0],
-                          'Median': metrics['SSIM']['quartiles'][1],
-                          'Q3': metrics['SSIM']['quartiles'][2],
-                          },
-                 on_epoch=True, sync_dist=True, prog_bar=False, batch_size=self.batch_size)
         self.log('SSIM_mean', metrics['SSIM']['mean'], sync_dist=True, prog_bar=True)
-
-        self.log('NCC', {'Mean': metrics['NCC']['mean'],
-                         'Q1': metrics['NCC']['quartiles'][0],
-                         'Median': metrics['NCC']['quartiles'][1],
-                         'Q3': metrics['NCC']['quartiles'][2],
-                         },
-                 on_epoch=True, sync_dist=True, prog_bar=False, batch_size=self.batch_size)
         self.log('NCC_mean', metrics['NCC']['mean'], sync_dist=True, prog_bar=True)
 
         middle = int(SR_aggs[0].shape[3] / 2)
@@ -185,28 +175,17 @@ class LitTrainer(pl.LightningModule):
 
         train_subjects = data(dataset='training',
                               root_dir=data_path,
-                              nr_sim=self.nr_sim_train,
-                              nr_hcp=self.nr_hcp_train,
+                              nr_sim_train=self.nr_sim_train,
+                              nr_hcp_train=self.nr_hcp_train,
                               middle_slices=args.middle_slices,
                               every_other=args.every_other)
 
-        if self.val_sim and not self.val_hcp:
-            val_subjects, _ = sim_data(dataset='validation',
-                                       middle_slices=args.middle_slices,
-                                       root_dir=data_path,
-                                       every_other=args.every_other)
-        elif not self.val_sim and self.val_hcp:
-            val_subjects, _ = HCP_data(dataset='validation',
-                                       middle_slices=args.middle_slices,
-                                       root_dir=data_path,
-                                       every_other=args.every_other)
-        elif self.val_sim and self.val_hcp:
-            val_subjects = data(dataset='validation',
-                                root_dir=data_path,
-                                middle_slices=args.middle_slices,
-                                every_other=args.every_other)
-        else:
-            raise ValueError('At least one of Sim of HCP has to be in validation set')
+        val_subjects = data(dataset='validation',
+                            root_dir=data_path,
+                            nr_sim_val=self.nr_sim_val,
+                            nr_hcp_val=self.nr_hcp_val,
+                            middle_slices=args.middle_slices,
+                            every_other=args.every_other)
 
         self.num_val_subjects = len(val_subjects)
 
@@ -223,7 +202,7 @@ class LitTrainer(pl.LightningModule):
         training_transform = tio.Compose([
             RandomBiasField(coefficients=0.2, p=0.5),
             RandomGamma(p=0.5),
-            RandomIntensity(intensity_diff=(-0.3, 0.2), p=0.5),
+            RandomIntensity(intensity_diff=(-0.3, 0.3), p=0.5),
             # RandomBlur(std=(0,1), p=0.75),
             Normalize(std=args.std, p=1),
             # tio.RandomNoise(p=0.5),
@@ -238,11 +217,7 @@ class LitTrainer(pl.LightningModule):
             # RandomBlur(std=1, p=0.75),
             Normalize(std=args.std),
             # tio.RandomNoise(p=0.5),
-            # tio.RandomFlip(axes=(0, 1), flip_probability=0.5),
-            # tio.RandomFlip(axes=(0, 1), flip_probability=0.75),
         ])
-
-        # test_transform = tio.Compose([Normalize(std=args.std), ])
 
         self.training_set = tio.SubjectsDataset(
             train_subjects, transform=training_transform)

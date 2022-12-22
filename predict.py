@@ -8,29 +8,24 @@ from models.generator_ESRGAN import GeneratorRRDB as generator_ESRGAN
 from models.generator_FSRCNN import FSRCNN as generator_FSRCNN
 from models.generator_RRDB import GeneratorRRDB as generator_RRDB
 from models.generator_DeepUResnet import DeepUResnet as generator_DeepUResnet
+from models.generator_DeepUResnet_v2 import build_deepunet as generator_DeepUResnet_v2
 from models.discriminator import Discriminator
 from models.feature_extractor import FeatureExtractor
 from argparse import ArgumentParser
-from utils import save_to_nifti, save_to_nifti_pp
+from utils import save_to_nifti
 from dataset_tio import sim_data, MRBrainS18_data, HCP_data, OASIS_data
 from transform import Normalize
-from glob import glob
 from tqdm import tqdm
 import json
-from skimage import filters
 
 device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
 
-# Sweep
-# run_id = 62
-# ckpt_path = glob('log/sweep-2/*/*'+str(run_id)+'*')[0]
+project = 'example'
+exp_name = 'mixed-wgan'
+ckpt_path = os.path.join('log', project, exp_name, exp_name+'-checkpoint-best.ckpt')
 
-# run_ids = np.arange(13,15)
-# run_ids = [5]
-# ckpt_paths = [glob('log/aymen/*/*-*-' + str(run_id) + '-checkpoint-best.ckpt')[0] for run_id in run_ids]
-ckpt_paths = ['log/aymen/glamorous-meadow-5/glamorous-meadow-5-checkpoint-epoch=5.ckpt']
+output_folder = os.path.join('output', project, exp_name)
 
-output_folder = 'output/aymen'
 
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
@@ -38,12 +33,13 @@ class AttrDict(dict):
         self.__dict__ = self
 
 
-def main(ckpt_paths, output_folder):
+def main(ckpt_path, output_folder):
     parser = ArgumentParser()
     parser.add_argument('--root_dir', default='/mnt/beta/djboonstoppel/Code', type=str)
     parser.add_argument('--gan', action='store_true')
     parser.add_argument('--source', required=True, type=str, choices=['sim', 'mrbrains', 'hcp', 'oasis'])
-    parser.add_argument('--generator', default='ESRGAN', type=str, choices=['ESRGAN', 'RRDB', 'DeepUResnet', 'FSRCNN'])
+    parser.add_argument('--generator', default='ESRGAN', type=str,
+                        choices=['ESRGAN', 'RRDB', 'DeepUResnet', 'DeepUResnet_v2', 'FSRCNN'])
     parser.add_argument('--num_filters', default=64, type=int)
     parser.add_argument('--patch_size', default=64, type=int)
     parser.add_argument('--patch_overlap', default=0.1, type=float)
@@ -64,6 +60,8 @@ def main(ckpt_paths, output_folder):
         generator = generator_RRDB(channels=1, filters=args.num_filters, num_res_blocks=1)
     elif args.generator == 'DeepUResnet':
         generator = generator_DeepUResnet(nrfilters=args.num_filters)
+    elif args.generator == 'DeepUResnet_v2':
+        generator = generator_DeepUResnet_v2()
     elif args.generator == 'FSRCNN':
         generator = generator_FSRCNN(scale_factor=1)
     else:
@@ -122,113 +120,91 @@ def main(ckpt_paths, output_folder):
         )
         grid_samplers.append(grid_sampler)
 
-    for ckpt_path in ckpt_paths:
-        path = os.path.join(args.root_dir, ckpt_path)
-        if args.gan:
-            model = LitTrainer_gan.load_from_checkpoint(
-                netG=generator,
-                netF=feature_extractor,
-                netD=discriminator,
-                checkpoint_path=path,
-            )
+    path = os.path.join(args.root_dir, ckpt_path)
+    if args.gan:
+        model = LitTrainer_gan.load_from_checkpoint(
+            netG=generator,
+            netF=feature_extractor,
+            netD=discriminator,
+            checkpoint_path=path,
+        )
+        if model.hparams.config['gan_mode'] == 'wgan':
+            mode = 'wgan'
+        elif model.hparams.config['gan_mode'] == 'vanilla':
+            mode = 'rasgan'
+
+    else:
+        model = LitTrainer_org.load_from_checkpoint(
+            netG=generator,
+            netF=feature_extractor,
+            checkpoint_path=path,
+        )
+
+    print('Predicting images using model checkpoint trained with config:')
+    print_args = ['nr_hcp_train', 'nr_sim_train', 'alpha_pixel', 'alpha_edge', 'alpha_perceptual',
+                  'alpha_adversarial', 'alpha_gradientpenalty', 'generator', 'num_res_blocks']
+    print("{:<22}| {:<10}".format('Var', 'Value'))
+    print('-' * 32)
+    for arg in print_args:
+        print("{:<22}| {:<10} ".format(arg, model.hparams.config[arg]))
+    if args.gan:
+        print("{:<22}| {:<10} ".format('gan_mode', mode))
+
+    model.to(device)
+    model.eval()
+
+    for i in tqdm(range(len(grid_samplers))):
+        if args.source == 'sim':
+            img_fname = "08-Apr-2022_Ernst_labels_{:06d}_3T_T1w_MPR1_img_act_1_contrast_1".format(
+                subjects_info[i]['id'])
+        elif args.source == 'hcp':
+            img_fname = "{:06d}_3T_T1w_MPR1_img".format(subjects_info[i]['id'])
+        elif args.source == 'oasis':
+            img_fname = "OAS1_{:04d}_MR1_mpr_n4_anon_111_t88_masked_gfc".format(subjects_info[i]['id'])
+        elif args.source == 'mrbrains':
+            img_fname = "p{:01d}_reg_T1".format(subjects_info[i]['id'])
         else:
-            model = LitTrainer_org.load_from_checkpoint(
-                netG=generator,
-                netF=feature_extractor,
-                checkpoint_path=path,
-            )
+            raise ValueError("Dataset '{}' not implemented".format(args.source))
 
-        print('Predicting images using model checkpoint trained with config:')
-        print_args = ['nr_hcp_train', 'nr_sim_train', 'alpha_pixel', 'alpha_edge', 'alpha_perceptual',
-                      'alpha_adversarial', 'alpha_gradientpenalty', 'generator', 'num_res_blocks', 'gan_mode', 'ragan']
-        print("{:<22}| {:<10}".format('Var', 'Value'))
-        print('-' * 32)
-        for arg in print_args:
-            print("{:<22}| {:<10} ".format(arg, model.hparams.config[arg]))
+        output_path = os.path.join(output_folder,
+                                   args.source,
+                                   dataset)
+        os.makedirs(output_path, exist_ok=True)
 
-        model.to(device)
-        model.eval()
+        with open(os.path.join(output_path, 'config.json'), 'w') as outfile:
+            json.dump(dict(model.hparams.config), outfile, indent=4)
 
-        for i in tqdm(range(len(grid_samplers))):
-            if args.source == 'sim':
-                img_fname = "08-Apr-2022_Ernst_labels_{:06d}_3T_T1w_MPR1_img_act_1_contrast_1".format(
-                    subjects_info[i]['id'])
-            elif args.source == 'hcp':
-                img_fname = "{:06d}_3T_T1w_MPR1_img".format(subjects_info[i]['id'])
-            elif args.source == 'oasis':
-                img_fname = "OAS1_{:04d}_MR1_mpr_n4_anon_111_t88_masked_gfc".format(subjects_info[i]['id'])
-            elif args.source == 'mrbrains':
-                img_fname = "p{:01d}_reg_T1".format(subjects_info[i]['id'])
-            else:
-                raise ValueError("Dataset '{}' not implemented".format(args.source))
+        aggregator = tio.inference.GridAggregator(grid_samplers[i])
 
-            # folder_name = 'sim={}_hcp={}_mode={}_ragan={}_blocks={}'.format(
-            #     model.nr_sim_train,
-            #     model.nr_hcp_train,
-            #     model.hparams.config['gan_mode'],
-            #     model.hparams.config['ragan'],
-            #     model.hparams.config['num_res_blocks'],
-            # )
+        patch_loader = torch.utils.data.DataLoader(
+            grid_samplers[i], batch_size=model.hparams.config['batch_size'])
 
-            folder_name = 'generator={}-gan'.format(args.generator)
+        with torch.no_grad():
+            for patches_batch in patch_loader:
+                imgs_lr = patches_batch['LR'][tio.DATA].squeeze(4)
+                imgs_sr = model(imgs_lr.to(device)).unsqueeze(4)
 
-            # folder_name = 'px={}_edge={}_vgg={}_gan={}_mode={}_ragan={}' \
-            # folder_name = 'gen={}_blocks={}_mode={}_ragan={}' \
-            #             .format(
-            # model.hparams.config['alpha_pixel'],
-            # model.hparams.config['alpha_edge'],
-            # model.hparams.config['alpha_perceptual'],
-            # model.hparams.config['alpha_adversarial'],
-            # args.generator,
-            # model.hparams.config['num_res_blocks'],
-            # model.hparams.config['gan_mode'],
-            # model.hparams.config['ragan'],
-            #         ).replace('.', '')
+                locations = patches_batch[tio.LOCATION]
+                aggregator.add_batch(imgs_sr, locations)
 
-            # name = 'mode={}_ragan={}_blocks={}_updated'.format(
-            #     model.hparams.config['gan_mode'],
-            #     model.hparams.config['ragan'],
-            #     model.hparams.config['num_res_blocks'])
+        foreground = aggregator.get_output_tensor() * args.std
+        generated = tio.ScalarImage(tensor=foreground)
+        sr = tio.Subject({'SR': generated})
 
-            output_path = os.path.join(output_folder,
-                                       args.source,
-                                       folder_name,
-                                       dataset)
-            os.makedirs(output_path, exist_ok=True)
+        mask = subjects[i]['MSK'][tio.DATA].numpy()[0]
+        bg_idx = np.where(mask == 0)
 
-            with open(os.path.join(output_path, 'config.json'), 'w') as outfile:
-                json.dump(dict(model.hparams.config), outfile, indent=4)
+        sr = sr['SR'][tio.DATA].numpy()[0]
+        sr[bg_idx] = 0
 
-            aggregator = tio.inference.GridAggregator(grid_samplers[i])
+        save_to_nifti(img=sr,
+                      header=subjects_info[i]['LR']['header'],
+                      max_val=subjects_info[i]['LR']['scaling'],
+                      fname=os.path.join(output_path,
+                                         img_fname + '_SR.nii.gz'),
+                      source=args.source,
+                      )
 
-            patch_loader = torch.utils.data.DataLoader(
-                grid_samplers[i], batch_size=model.hparams.config['batch_size'])
-
-            with torch.no_grad():
-                for patches_batch in patch_loader:
-                    imgs_lr = patches_batch['LR'][tio.DATA].squeeze(4)
-                    imgs_sr = model(imgs_lr.to(device)).unsqueeze(4)
-
-                    locations = patches_batch[tio.LOCATION]
-                    aggregator.add_batch(imgs_sr, locations)
-
-            foreground = aggregator.get_output_tensor() * args.std
-            generated = tio.ScalarImage(tensor=foreground)
-            sr = tio.Subject({'SR': generated})
-
-            mask = subjects[i]['MSK'][tio.DATA].numpy()[0]
-            bg_idx = np.where(mask == 0)
-
-            sr = sr['SR'][tio.DATA].numpy()[0]
-            sr[bg_idx] = 0
-
-            save_to_nifti(img=sr,
-                          header=subjects_info[i]['LR']['header'],
-                          max_val=subjects_info[i]['LR']['scaling'],
-                          fname=os.path.join(output_path,
-                                             img_fname + '_SR.nii.gz'),
-                          source=args.source,
-                          )
 
 if __name__ == '__main__':
-    main(ckpt_paths, output_folder)
+    main(ckpt_path, output_folder)
